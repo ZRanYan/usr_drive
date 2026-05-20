@@ -20,7 +20,8 @@ TIMESTAMP=$(date +%Y%m%d%H%M%S)
 TOP_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 MODULE_DIRS=(
-    "7-new_sensor"
+	"7-new_sensor"
+    "3-iomanager"
 )
 
 # 处理clean参数
