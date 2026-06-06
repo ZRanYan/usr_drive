@@ -13,7 +13,7 @@
 //1.creat this driver
 ****************************************************************/ 
 
-#define MIN_RISE_TIME 19000
+#define MIN_RISE_TIME 17000
 #define MIN_FALL_TIME 500 //单位微秒
 
 #define CPU_RT_TIME_ID 7

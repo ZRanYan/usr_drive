@@ -18,7 +18,9 @@ endif
 
 obj-m := $(MODULE_NAME).o
 
-$(MODULE_NAME)-objs := imx566_mode_tbls.o imx565_mode_tbls.o nv_sensor.o imx_sensor_common.o
+$(MODULE_NAME)-objs := imx566_mode_tbls.o imx565_mode_tbls.o \
+						sc535hgs_mode_tbls.o gmax3405_mode_tbls.o \
+						nv_sensor.o imx_sensor_common.o
 
 PWD:= $(shell pwd)
 

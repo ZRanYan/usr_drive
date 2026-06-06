@@ -1,0 +1,910 @@
+#include "gmax3405_mode_tbls.h"
+#include "imx_sensor_common.h"
+
+#define GMAX3405_WIDTH     2448
+#define GMAX3405_HEIGHT    2048
+
+#define GAMX3405_FULL_VERSION_EX \
+    "gmax3405 " BL_NV_SENSOR_FULL_VERSION
+
+static const struct regmap_config gmax3405_regmap_config = {
+	.reg_bits = 16,
+	.val_bits = 8,
+	.cache_type = REGCACHE_RBTREE,
+	.use_single_read = true,
+	.use_single_write = true,
+};
+enum {
+	GMAX3405_MODE_12BIT,
+	GMAX3405_MODE_ROI, 
+	GMAX3405_MODE_STOP_STREAM,
+	GMAX3405_MODE_TEST_PATTERN
+};
+static const int gmax3405_80_6fps[] = {
+	75,
+};
+
+static struct camera_common_frmfmt gmax3405_frmfmt[] = {
+	{{GMAX3405_WIDTH, GMAX3405_HEIGHT}, gmax3405_80_6fps, 0, 0,GMAX3405_MODE_12BIT},
+};
+
+static struct camera_common_sensor_ops gmax3405_common_ops = {
+	.numfrmfmts = ARRAY_SIZE(gmax3405_frmfmt),
+	.frmfmt_table = gmax3405_frmfmt,		
+	.power_on = sensor_power_on,
+	.power_off = sensor_power_off,		
+	.write_reg = imx_write_reg,		
+	.read_reg = imx_read_reg,		
+	.parse_dt = sensor_parse_dt,		
+	.power_get = sensor_power_get,	
+	.power_put = sensor_power_put,		
+	.set_mode = sensor_set_mode,		
+};
+/**
+ * @brief 解析设备树配置的参数
+ * 
+ * @param priv 
+ */
+static void gmax3405_dtb_init(struct nv_sony_senor *priv)
+{
+    // struct device *dev = &priv->i2c_client->dev;
+    // priv->pwdn_gpio =  devm_gpiod_get(dev, "pwren", GPIOD_OUT_LOW);
+	// if (IS_ERR(priv->pwdn_gpio)) {
+    //     	dev_err(dev, "Failed to get pwdn_gpio\n");
+    //     	goto error;
+    // }
+    // priv->reset_gpio =  devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
+	// if (IS_ERR(priv->reset_gpio)) {
+    //     	dev_err(dev, "Failed to get reset_gpio\n");
+    //     	goto error;
+    // }
+    // priv->pwdnb_gpio =  devm_gpiod_get(dev, "pwdn", GPIOD_OUT_LOW);
+	// if (IS_ERR(priv->pwdnb_gpio)) {
+    //     	dev_err(dev, "Failed to get pwdnb_gpio\n");
+    //     	goto error;
+    // }
+// error:
+	return;
+}
+static int sensor_power_on_set(struct camera_common_data *s_data)
+{
+	// struct nv_sony_senor *priv = (struct nv_sony_senor *)s_data->priv;
+	struct camera_common_power_rail *pw = s_data->power;
+	// gpiod_set_value(priv->fsync_gpio, 0); //触发信号是上升沿触发
+    // gpiod_set_value(priv->pwdn_gpio, 0);
+    // usleep_range(1000, 1010);
+	// usleep_range(1000, 1010);
+	// usleep_range(1000, 1010);
+	// usleep_range(1000, 1010);
+    // gpiod_set_value(priv->pwdn_gpio, 1);
+	// usleep_range(500, 510);
+	// gpiod_set_value(priv->reset_gpio, 1);
+	// usleep_range(500, 510);
+	// gpiod_set_value(priv->pwdnb_gpio, 1);
+	pw->state = SWITCH_ON;
+	return 0;
+}
+static int sensor_power_off_set(struct camera_common_data *s_data)
+{
+	// struct nv_sony_senor *priv = (struct nv_sony_senor *)s_data->priv;
+	struct camera_common_power_rail *pw = s_data->power;
+	// gpiod_set_value(priv->pwdnb_gpio, 0);
+	// usleep_range(500, 510);
+    // gpiod_set_value(priv->reset_gpio, 0);
+	// usleep_range(500, 510);
+    // gpiod_set_value(priv->pwdn_gpio, 0);
+	pw->state = SWITCH_OFF;
+	return 0;
+}
+static int gmax3405_board_setup(struct nv_sony_senor *priv)
+{
+	struct camera_common_data *s_data = priv->s_data;
+    struct device *dev = s_data->dev;
+	// u8 reg_val = 1;
+	int err = 0;
+	err = camera_common_mclk_enable(s_data);
+	if (err) {
+		dev_err(dev, "Error %d turning on mclk\n", err);
+		return err;
+	}
+    err = sensor_power_on_set(s_data); //硬件上电顺序
+	if (err) {
+		dev_err(dev, "Error %d during power on sensor\n", err);
+		goto err_reg;
+	}
+	msleep_range(5);
+	imx_write_reg(s_data, 0x2E00, 0x11);
+	imx_write_reg(s_data, 0x3301, 0x01);
+	msleep_range(80);
+	imx_write_reg(s_data, 0x3005, 0x01);
+	imx_write_reg(s_data, 0x3024, 0x14);
+	msleep_range(1);
+	imx_write_reg(s_data, 0x3023, 0xF8);
+	msleep_range(1);
+	imx_write_reg(s_data, 0x3023, 0xF9);
+	msleep_range(1);
+	imx_write_reg(s_data, 0x3023, 0xFF);
+	msleep_range(1);
+	imx_write_reg(s_data, 0x3024, 0x34);
+	msleep_range(1);
+	imx_write_reg(s_data, 0x3023, 0xFB);
+	msleep_range(1);
+	imx_write_reg(s_data, 0x2E00, 0x13);
+    // usleep_range(10000,10010);
+	// usleep_range(10000,10010);
+    // err = imx_read_reg(s_data, 0x2100, &reg_val);
+    // vc_info(dev, "read 0x2100 value:%d \r\n", reg_val);
+    // if(0x00 != reg_val)
+	// {
+	// 	goto err_reg;
+	// }
+	return err;
+
+err_reg:
+	sensor_power_off_set(s_data);
+	camera_common_mclk_disable(s_data);
+	return err;
+}
+
+/* I2C Register Initialization Table for GMX3405 (0x2E00 ~ 0x3813) */
+static struct reg_8 gmax3405_12bit_4line_master_init[] = {
+    {0x2E00, 0x0},
+    {0x2E01, 0x0},
+    {0x2E02, 0x0},
+    {0x2E03, 0x2},
+    {0x2E04, 0x0},
+    {0x2E05, 0x0},
+    {0x2E06, 0x0},
+    {0x2E07, 0x0},
+    {0x2E08, 0x0},
+    {0x2E09, 0x0},
+    {0x2E0A, 0x0},
+    {0x2E0B, 0x0},
+    {0x2E0C, 0x0},
+    {0x2E0D, 0x0},
+    {0x2E0E, 0x0},
+    {0x2E0F, 0x0},
+    {0x2E10, 0x0},
+    {0x2E11, 0x0},
+    {0x2E12, 0x0},
+    {0x2E13, 0x0},
+    {0x2E14, 0x0},
+    {0x2E15, 0x0},
+    {0x2E16, 0x0},
+    {0x2E17, 0x0},
+    {0x2E18, 0x0},
+    {0x2E19, 0x0},
+    {0x2E1A, 0x0},
+    {0x2E1B, 0x0},
+    {0x2E1C, 0x0},
+    {0x2E1D, 0x0},
+    {0x2E1E, 0x0},
+    {0x2E1F, 0x0},
+    {0x2E20, 0x0},
+    {0x2E21, 0x0},
+    {0x2E22, 0x0},
+    {0x2E23, 0x0},
+    {0x2E24, 0x0},
+    {0x2E25, 0x0},
+    {0x2E26, 0x0},
+    {0x2E27, 0x0},
+    {0x2E28, 0x0},
+    {0x2E29, 0x0},
+    {0x2E2A, 0x0},
+    {0x2E2B, 0x0},
+    {0x2E2C, 0x0},
+    {0x2E2D, 0x0},
+    {0x2E2E, 0x0},
+    {0x2E2F, 0x0},
+    {0x2E30, 0x0},
+    {0x2E31, 0x0},
+    {0x2E32, 0x0},
+    {0x2E33, 0x0},
+    {0x2E34, 0x0},
+    {0x2E35, 0x0},
+    {0x2E36, 0x0},
+    {0x2E37, 0x0},
+    {0x2E38, 0x0},
+    {0x2E39, 0x0},
+    {0x2E3A, 0x0},
+    {0x2E3B, 0x0},
+    {0x2E3C, 0x0},
+    {0x2E3D, 0x0},
+    {0x2E3E, 0x0},
+    {0x2E3F, 0x0},
+    {0x2E40, 0x0},
+    {0x2E41, 0x0},
+    {0x2E42, 0x0},
+    {0x2E43, 0x0},
+    {0x2E44, 0x0},
+    {0x2E45, 0x0},
+    {0x2E46, 0x0},
+    {0x2E47, 0x0},
+    {0x2E48, 0x0},
+    {0x2E49, 0x0},
+    {0x2E4A, 0x0},
+    {0x2E4B, 0x0},
+    {0x2E4C, 0x0},
+    {0x2E4D, 0x0},
+    {0x2E4E, 0x0},
+    {0x2E4F, 0x0},
+    {0x2E50, 0x0},
+    {0x2E51, 0x0},
+    {0x2E52, 0x0},
+    {0x2E53, 0x2},
+    {0x2E54, 0x2A},
+    {0x2E55, 0x0},
+    {0x2E56, 0x0},
+    {0x2E57, 0x0},
+    {0x2E58, 0x0},
+    {0x2E59, 0x0},
+    {0x2E5A, 0x0},
+    {0x2E5B, 0x0},
+    {0x2E5C, 0x0},
+    {0x2E5D, 0x0},
+    {0x2E5E, 0x0},
+    {0x2E5F, 0x0},
+    {0x2E60, 0x0},
+    {0x2E61, 0x0},
+    {0x2E62, 0x0},
+    {0x2E63, 0x0},
+    {0x2E64, 0x0},
+    {0x2E65, 0x0},
+    {0x2E66, 0x0},
+    {0x2E67, 0x0},
+    {0x2E68, 0x0},
+    {0x2E69, 0x0},
+    {0x2E6A, 0x0},
+    {0x2E6B, 0x0},
+    {0x2E6C, 0x0},
+    {0x2E6D, 0x0},
+    {0x2E6E, 0x0},
+    {0x2E6F, 0x0},
+    {0x2E70, 0x0},
+    {0x2E71, 0x0},
+    {0x2E72, 0x0},
+    {0x2E73, 0x0},
+    {0x2E74, 0x0},
+    {0x2E75, 0x0},
+    {0x2E76, 0x0},
+    {0x2E77, 0x0},
+    {0x2E78, 0x0},
+    {0x2E79, 0x0},
+    {0x2E7A, 0x0},
+    {0x2E7B, 0x0},
+    {0x2E7C, 0x0},
+    {0x2E7D, 0x0},
+    {0x2E7E, 0x0},
+    {0x2E7F, 0x0},
+    {0x2E80, 0x0},
+    {0x2E81, 0x0},
+    {0x2E82, 0x0},
+    {0x2E83, 0x0},
+    {0x2E84, 0x0},
+    {0x2E85, 0x0},
+    {0x2E86, 0x0},
+    {0x2E87, 0x0},
+    {0x2E88, 0x0},
+    {0x2E89, 0x0},
+    {0x2E8A, 0x0},
+    {0x2E8B, 0x0},
+    {0x2E8C, 0x0},
+    {0x2E8D, 0x0},
+    {0x2E8E, 0x0},
+    {0x2E8F, 0x0},
+    {0x2E90, 0x0},
+    {0x2E91, 0x0},
+    {0x2E92, 0x0},
+    {0x2E93, 0x0},
+    {0x2E94, 0x0},
+    {0x2E95, 0x0},
+    {0x2E96, 0x0},
+    {0x2E97, 0x0},
+    {0x2E98, 0x0},
+    {0x2E99, 0x0},
+    {0x2E9A, 0x0},
+    {0x2E9B, 0x0},
+    {0x2E9C, 0x0},
+    {0x2E9D, 0x0},
+    {0x2E9E, 0x0},
+    {0x2E9F, 0x0},
+    {0x2EA0, 0x0},
+    {0x2EA1, 0x0},
+    {0x2EA2, 0x0},
+    {0x2EA3, 0x0},
+    {0x2EA4, 0x0},
+    {0x2EA5, 0x0},
+    {0x2EA6, 0x0},
+    {0x2EA7, 0x0},
+    {0x2EA8, 0x0},
+    {0x2EA9, 0x0},
+    {0x2EAA, 0x0},
+    {0x2EAB, 0x0},
+    {0x2EAC, 0x0},
+    {0x2EAD, 0x0},
+    {0x2EAE, 0x0},
+    {0x2EAF, 0x0},
+    {0x2EB0, 0x0},
+    {0x2EB1, 0x0},
+    {0x2EB2, 0x0},
+    {0x2EB3, 0x0},
+    {0x2EB4, 0x0},
+    {0x2EB5, 0x0},
+    {0x2EB6, 0x0},
+    {0x2EB7, 0x0},
+    {0x2EB8, 0x0},
+    {0x2EB9, 0x0},
+    {0x2EBA, 0x0},
+    {0x2EBB, 0x0},
+    {0x3000, 0x0},
+    {0x3001, 0x0},
+    {0x3002, 0x0},
+    {0x3003, 0x0},
+    {0x3004, 0x0},
+    {0x3005, 0x0},
+    {0x3006, 0x0},
+    {0x3007, 0x0},
+    {0x3008, 0x0},
+    {0x3009, 0x0},
+    {0x300A, 0x0},
+    {0x300B, 0x0},
+    {0x300C, 0x0},
+    {0x300D, 0x0},
+    {0x300E, 0x0},
+    {0x300F, 0x0},
+    {0x3010, 0x0},
+    {0x3011, 0x0},
+    {0x3012, 0x0},
+    {0x3013, 0x0},
+    {0x3014, 0x0},
+    {0x3015, 0x0},
+    {0x3016, 0x0},
+    {0x3017, 0x0},
+    {0x3018, 0x0},
+    {0x3019, 0x0},
+    {0x301A, 0x0},
+    {0x301B, 0x0},
+    {0x301C, 0x0},
+    {0x301D, 0x0},
+    {0x301E, 0x0},
+    {0x301F, 0x0},
+    {0x3020, 0x0},
+    {0x3021, 0x0},
+    {0x3022, 0x0},
+    {0x3023, 0x0},
+    {0x3024, 0x0},
+    {0x3025, 0x0},
+    {0x3026, 0x0},
+    {0x3027, 0x0},
+    {0x3028, 0x0},
+    {0x3029, 0x0},
+    {0x302A, 0x0},
+    {0x302B, 0x0},
+    {0x302C, 0x0},
+    {0x302D, 0x0},
+    {0x302E, 0x0},
+    {0x302F, 0x0},
+    {0x3030, 0x0},
+    {0x3031, 0x0},
+    {0x3032, 0x0},
+    {0x3033, 0x0},
+    {0x3034, 0x0},
+    {0x3035, 0x0},
+    {0x3036, 0x0},
+    {0x3037, 0x0},
+    {0x3038, 0x0},
+    {0x3200, 0x0},
+    {0x3201, 0x0},
+    {0x3202, 0x0},
+    {0x3203, 0x0},
+    {0x3204, 0x0},
+    {0x3205, 0x0},
+    {0x3206, 0x0},
+    {0x3207, 0x0},
+    {0x3208, 0x0},
+    {0x3209, 0x0},
+    {0x320A, 0x0},
+    {0x320B, 0x0},
+    {0x320C, 0x0},
+    {0x320D, 0x0},
+    {0x320E, 0x0},
+    {0x320F, 0x0},
+    {0x3210, 0x0},
+    {0x3211, 0x0},
+    {0x3212, 0x0},
+    {0x3213, 0x0},
+    {0x3214, 0x0},
+    {0x3215, 0x0},
+    {0x3216, 0x0},
+    {0x3217, 0x0},
+    {0x3218, 0x0},
+    {0x3219, 0x0},
+    {0x321A, 0x0},
+    {0x321B, 0x0},
+    {0x321C, 0x0},
+    {0x321D, 0x0},
+    {0x321E, 0x0},
+    {0x321F, 0x0},
+    {0x3220, 0x0},
+    {0x3221, 0x0},
+    {0x3222, 0x0},
+    {0x3223, 0x0},
+    {0x3224, 0x0},
+    {0x3225, 0x0},
+    {0x3226, 0x0},
+    {0x3227, 0x0},
+    {0x3228, 0x0},
+    {0x3229, 0x0},
+    {0x322A, 0x0},
+    {0x322B, 0x0},
+    {0x322C, 0x0},
+    {0x322D, 0x0},
+    {0x322E, 0x0},
+    {0x322F, 0x0},
+    {0x3230, 0x0},
+    {0x3231, 0x0},
+    {0x3232, 0x0},
+    {0x3233, 0x0},
+    {0x3234, 0x0},
+    {0x3235, 0x0},
+    {0x3236, 0x0},
+    {0x3237, 0x0},
+    {0x3238, 0x0},
+    {0x3239, 0x0},
+    {0x323A, 0x0},
+    {0x323B, 0x0},
+    {0x323C, 0x0},
+    {0x323D, 0x0},
+    {0x323E, 0x0},
+    {0x323F, 0x0},
+    {0x3240, 0x0},
+    {0x3241, 0x0},
+    {0x3242, 0x0},
+    {0x3243, 0x0},
+    {0x3244, 0x0},
+    {0x3245, 0x0},
+    {0x3246, 0x0},
+    {0x3247, 0x0},
+    {0x3248, 0x0},
+    {0x3249, 0x0},
+    {0x324A, 0x0},
+    {0x324B, 0x0},
+    {0x324C, 0x0},
+    {0x324D, 0x0},
+    {0x324E, 0x0},
+    {0x324F, 0x0},
+    {0x3250, 0x0},
+    {0x3251, 0x0},
+    {0x3252, 0x0},
+    {0x3253, 0x0},
+    {0x3254, 0x0},
+    {0x3255, 0x0},
+    {0x3256, 0x0},
+    {0x3257, 0x0},
+    {0x3258, 0x0},
+    {0x3300, 0x0},
+    {0x3301, 0x0},
+    {0x3302, 0x0},
+    {0x3303, 0x0},
+    {0x3304, 0x0},
+    {0x3305, 0x0},
+    {0x3306, 0x0},
+    {0x3307, 0x0},
+    {0x3308, 0x0},
+    {0x3309, 0x0},
+    {0x330A, 0x0},
+    {0x330B, 0x0},
+    {0x330C, 0x0},
+    {0x330D, 0x0},
+    {0x330E, 0x0},
+    {0x330F, 0x0},
+    {0x3310, 0x0},
+    {0x3311, 0x0},
+    {0x3312, 0x0},
+    {0x3313, 0x0},
+    {0x3314, 0x0},
+    {0x3315, 0x0},
+    {0x3316, 0x0},
+    {0x3317, 0x0},
+    {0x3318, 0x0},
+    {0x3319, 0x0},
+    {0x331A, 0x0},
+    {0x331B, 0x0},
+    {0x331C, 0x0},
+    {0x331D, 0x0},
+    {0x331E, 0x0},
+    {0x331F, 0x0},
+    {0x3320, 0x0},
+    {0x3321, 0x0},
+    {0x3322, 0x0},
+    {0x3323, 0x0},
+    {0x3324, 0x0},
+    {0x3325, 0x0},
+    {0x3326, 0x0},
+    {0x3327, 0x0},
+    {0x3328, 0x0},
+    {0x3329, 0x0},
+    {0x332A, 0x0},
+    {0x332B, 0x0},
+    {0x332C, 0x0},
+    {0x332D, 0x0},
+    {0x332E, 0x0},
+    {0x332F, 0x0},
+    {0x3330, 0x0},
+    {0x3331, 0x0},
+    {0x3332, 0x0},
+    {0x3333, 0x0},
+    {0x3334, 0x0},
+    {0x3335, 0x0},
+    {0x3336, 0x0},
+    {0x3337, 0x0},
+    {0x3338, 0x0},
+    {0x3339, 0x0},
+    {0x333A, 0x0},
+    {0x333B, 0x0},
+    {0x333C, 0x0},
+    {0x333D, 0x0},
+    {0x333E, 0x0},
+    {0x333F, 0x0},
+    {0x3340, 0x0},
+    {0x3341, 0x0},
+    {0x3342, 0x0},
+    {0x3343, 0x0},
+    {0x3344, 0x0},
+    {0x3345, 0x0},
+    {0x3346, 0x0},
+    {0x3347, 0x0},
+    {0x3348, 0x0},
+    {0x3349, 0x0},
+    {0x334A, 0x0},
+    {0x334B, 0x0},
+    {0x334C, 0x0},
+    {0x334D, 0x0},
+    {0x334E, 0x0},
+    {0x334F, 0x0},
+    {0x3350, 0x0},
+    {0x3351, 0x0},
+    {0x3352, 0x0},
+    {0x3353, 0x0},
+    {0x3354, 0x0},
+    {0x3355, 0x0},
+    {0x3356, 0x0},
+    {0x3357, 0x0},
+    {0x3358, 0x0},
+    {0x3359, 0x0},
+    {0x335A, 0x0},
+    {0x335B, 0x0},
+    {0x335C, 0x0},
+    {0x335D, 0x0},
+    {0x335E, 0x0},
+    {0x335F, 0x0},
+    {0x3360, 0x0},
+    {0x3361, 0x0},
+    {0x3362, 0x0},
+    {0x3363, 0x0},
+    {0x3364, 0x0},
+    {0x3365, 0x0},
+    {0x3366, 0x0},
+    {0x3367, 0x0},
+    {0x3368, 0x0},
+    {0x3369, 0x0},
+    {0x336A, 0x0},
+    {0x336B, 0x0},
+    {0x336C, 0x0},
+    {0x3400, 0x0},
+    {0x3401, 0x0},
+    {0x3402, 0x0},
+    {0x3403, 0x0},
+    {0x3404, 0x0},
+    {0x3405, 0x0},
+    {0x3500, 0x0},
+    {0x3501, 0x0},
+    {0x3502, 0x0},
+    {0x3503, 0x0},
+    {0x3504, 0x0},
+    {0x3505, 0x0},
+    {0x3506, 0x0},
+    {0x3507, 0x0},
+    {0x3508, 0x0},
+    {0x3509, 0x0},
+    {0x350A, 0x0},
+    {0x350B, 0x0},
+    {0x350C, 0x0},
+    {0x350D, 0x0},
+    {0x350E, 0x0},
+    {0x350F, 0x0},
+    {0x3510, 0x0},
+    {0x3511, 0x0},
+    {0x3512, 0x0},
+    {0x3513, 0x0},
+    {0x3514, 0x0},
+    {0x3515, 0x0},
+    {0x3516, 0x0},
+    {0x3517, 0x0},
+    {0x3518, 0x0},
+    {0x3519, 0x0},
+    {0x351A, 0x0},
+    {0x351B, 0x0},
+    {0x351C, 0x0},
+    {0x351D, 0x0},
+    {0x351E, 0x0},
+    {0x351F, 0x0},
+    {0x3520, 0x0},
+    {0x3521, 0x0},
+    {0x3522, 0x0},
+    {0x3523, 0x0},
+    {0x3524, 0x0},
+    {0x3525, 0x0},
+    {0x3526, 0x0},
+    {0x3527, 0x0},
+    {0x3528, 0x0},
+    {0x3529, 0x0},
+    {0x352A, 0x0},
+    {0x3700, 0x0},
+    {0x3701, 0x0},
+    {0x3702, 0x0},
+    {0x3703, 0x12},
+    {0x3704, 0x0},
+    {0x3705, 0x80},
+    {0x3706, 0x0},
+    {0x3707, 0x0},
+    {0x3708, 0x0},
+    {0x3709, 0x28},
+    {0x370A, 0x0},
+    {0x370B, 0x0},
+    {0x370C, 0x0},
+    {0x370D, 0x0},
+    {0x370E, 0x0},
+    {0x370F, 0x0},
+    {0x3710, 0x0},
+    {0x3711, 0x0},
+    {0x3712, 0x0},
+    {0x3713, 0x0},
+    {0x3800, 0x0},
+    {0x3801, 0x0},
+    {0x3802, 0x0},
+    {0x3803, 0x12},
+    {0x3804, 0x0},
+    {0x3805, 0x80},
+    {0x3806, 0x0},
+    {0x3807, 0x0},
+    {0x3808, 0x0},
+    {0x3809, 0x28},
+    {0x380A, 0x0},
+    {0x380B, 0x0},
+    {0x380C, 0x0},
+    {0x380D, 0x0},
+    {0x380E, 0x0},
+    {0x380F, 0x0},
+    {0x3810, 0x0},
+    {0x3811, 0x0},
+    {0x3812, 0x0},
+    {0x3813, 0x0},
+    {SENSOR_TABLE_END, 0x00},
+};
+
+static SENSOR_REG_STRUCT *mode_table[] = {
+	[GMAX3405_MODE_12BIT] = gmax3405_12bit_4line_master_init,
+	[GMAX3405_MODE_ROI] = NULL,
+	[GMAX3405_MODE_STOP_STREAM] = NULL,
+};
+
+static void gmax3405_init_param(struct nv_sony_senor *priv, int workMode)
+{
+	struct camera_common_data *s_data = priv->s_data;
+	sensor_write_table(s_data, mode_table[workMode]);
+}
+
+void gmax3405_read_id_type(struct nv_sony_senor *priv)
+{
+
+}
+
+static int gmax3405_get_temp(struct nv_sony_senor *priv)
+{
+    u8 reg_val = 0;
+    int32_t val = 0;
+	struct camera_common_data *s_data = priv->s_data;
+    imx_read_reg(s_data, GMAX3405_D_TEMP_0, &reg_val);
+    val = reg_val;
+    imx_read_reg(s_data, GMAX3405_D_TEMP_0, &reg_val);
+    val |= (reg_val<<8);
+    val *= 42;
+    val -= 32982;
+    return val;
+}
+/**
+ * @brief 配置增益参数，目前仅支持模拟增益参数配置0-40的值
+ * 
+ * @param s_data 
+ * @param val 
+ * @return int 
+ */
+static int gmx3405_sensor_set_gain(struct camera_common_data *s_data, s64 val)
+{
+    u8 reg_val = 0x12;
+    if(val <0 || 40 >val)
+    {
+        return -1;
+    }
+    reg_val += val;
+    imx_write_reg(s_data, GMAX3405_PGA_GAIN, reg_val);
+    return 0;
+}
+
+static int gmax3405_sensor_set_black_level(struct camera_common_data *s_data, s64 val)
+{
+	int err = 0;
+	u16 black = 0;
+	struct device *dev = s_data->dev;
+	black = val;
+	err = imx_write_reg(s_data, GMAX3405_REG_HOLD, 1);
+	err |= imx_write_reg(s_data, 0x305B, black&0xff);
+	err |= imx_write_reg(s_data, 0x305C, (black>>8)&0x0f);
+	err |= imx_write_reg(s_data, GMAX3405_REG_HOLD, 0);
+	if (err)
+		dev_err(dev, "%s: gain control error\n", __func__);
+	return err;
+}
+static int gmax3405_sensor_set_filp(struct camera_common_data *s_data, FILP_TYPE type, s64 val)
+{
+	u8 value = 0;
+	int err = 0;
+	struct device *dev = s_data->dev;
+	value = (val&0x01);
+	if(VERTICAL == type)
+	{
+		err = imx_write_reg(s_data, 0x2E05, value);
+	}
+	else if(HORIZONTAL == type)
+	{
+		err = imx_write_reg(s_data, 0x2500, value);
+	}
+	if (err)
+		dev_err(dev, "%s: flip control error\n", __func__);
+	return err;
+}
+
+int gmax3405_ioctl_set(struct nv_sony_senor *priv, unsigned int cmd, void *arg)
+{
+    union sensor_ioctl_data data;
+#ifdef USR_DEBUG_ENABLE
+	struct device *dev = priv->s_data->dev;
+#endif
+    int ret = 0;
+	const char *ver;
+	int tmpValue = 0;
+    s64 val;
+	memset(&data, 0, sizeof(data));
+    switch (cmd)
+	{
+		case V4L2_CID_GET_VERSION:
+			vc_info(dev, "get ver:%s \r\n", GAMX3405_FULL_VERSION_EX);
+			ver = GAMX3405_FULL_VERSION_EX;
+			data.ver.len = strnlen(ver, SENSOR_VER_MAX_LEN - 1);
+			memcpy(data.ver.ver, ver, data.ver.len);
+			data.ver.ver[data.ver.len] = '\0';
+			if (copy_to_user(arg, &data.ver, sizeof(data.ver))) {
+            	ret = -EFAULT;
+        	}
+			break;
+        case V4L2_CID_REGIST_IOCTL:
+			ret = copy_from_user(&data.reg, (SENSOR_DEBUG_REG_PARAMS __user *)arg, sizeof(data.reg));
+			vc_info(dev, "Received custom data.reg opt:%d, addr:%d 0x%x, value:%d\n", \
+										data.reg.opt, data.reg.addr, data.reg.addr, data.reg.value);
+			sony_sensor_reg_debug_set(priv->s_data, &data.reg);
+			vc_info(dev, "Received custom data.reg opt:%d, addr:%d 0x%x, value:%d\n", \
+										data.reg.opt, data.reg.addr, data.reg.addr, data.reg.value);
+			ret = copy_to_user((SENSOR_DEBUG_REG_PARAMS __user *)arg, &data.reg, sizeof(data.reg));
+			break;
+		case CAM_GET_SENSOR_TYPE:
+			ret = (int)GMAX3405;
+			break;
+        case CAM_SET_ROI_FORMAT:
+            break;
+        case CAM_SET_GAIN:
+            ret = copy_from_user(&val, (s64 __user *)arg, sizeof(val));
+			vc_info(dev,"set CAM_SET_GAIN  %lld \n", val);
+			ret = gmx3405_sensor_set_gain(priv->s_data, val);
+            break;
+		case CAM_SET_BLACK_LEVEL:
+			{
+				ret = copy_from_user(&val, (s64 __user *)arg, sizeof(val));
+				vc_info(dev,"set CAM_SET_BLACK_LEVEL  %lld \n", val);
+				ret = gmax3405_sensor_set_black_level(priv->s_data, val);
+			}
+			break;
+		case CAM_SET_HFLIP:
+			{
+				ret = copy_from_user(&val, (s64 __user *)arg, sizeof(val));
+				vc_info(dev,"set CAM_SET_HFLIP  %lld \n", val);
+				ret = gmax3405_sensor_set_filp(priv->s_data, HORIZONTAL, val);
+			}
+			break;
+		case CAM_SET_VFLIP:
+			{
+				ret = copy_from_user(&val, (s64 __user *)arg, sizeof(val));
+				vc_info(dev,"set CAM_SET_VFLIP  %lld \n", val);
+				ret = gmax3405_sensor_set_filp(priv->s_data, VERTICAL, val);
+			}
+			break;
+		case V4L2_CID_GET_TEMPERATURE_VAL:
+			{
+				tmpValue = gmax3405_get_temp(priv); //返回的温度值精确到两位小数点
+				vc_info(dev, "get tempValue:%d \r\n", tmpValue);
+				ret = copy_to_user((int __user *)arg, &tmpValue, sizeof(tmpValue));
+			}
+			break;
+    	default:
+			break;
+	}
+	return ret;
+}
+
+static int gmax3405_s_ctrl(struct v4l2_ctrl *ctrl)
+{
+// #ifdef USR_DEBUG_ENABLE
+// 	struct nv_sony_senor *priv = container_of(ctrl->handler, struct nv_sony_senor, ctrl_handler);
+// 	struct camera_common_data	*s_data = priv->s_data;
+// #endif
+	int err = 0;
+	switch (ctrl->id) {
+		case V4L2_CID_CONTRAST:
+        case V4L2_CID_TEST_PATTERN:
+            break;
+        default:
+			break;
+    }
+	return err;
+}
+static const struct v4l2_ctrl_ops gmax3405_ctrl_ops = {
+	.s_ctrl = gmax3405_s_ctrl,
+};
+static int gmax3405_ctrls_init(struct nv_sony_senor *priv)
+{
+    int err = 0;
+	struct device *dev = priv->s_data->dev;
+	v4l2_ctrl_handler_init(&priv->ctrl_handler, 4);
+    priv->black = v4l2_ctrl_new_std(&priv->ctrl_handler, &gmax3405_ctrl_ops, V4L2_CID_BLACK_LEVEL, 0, 2048, 1, SENSOR_DEFAULT_BLACK_VALUE);
+	priv->gain = v4l2_ctrl_new_std(&priv->ctrl_handler, &gmax3405_ctrl_ops, V4L2_CID_GAIN, 0, 48, 1, 0);//默认值为0
+    priv->numctrls = 0;
+	priv->s_data->numctrls = 0;
+	priv->s_data->ctrls = NULL;
+	err = v4l2_ctrl_handler_setup(&priv->ctrl_handler);
+	if (err) {
+		dev_err(dev, "Error %d in control hdl setup\n", err);
+		goto error;
+	}
+	err = priv->ctrl_handler.error;
+	if (err) {
+		dev_err(dev, "Error %d adding controls\n", err);
+		goto error;
+	}
+	return 0;
+error:
+	v4l2_ctrl_handler_free(&priv->ctrl_handler);
+	return err;
+}
+const struct nv_sensor_model_info gmax3405_i2c_info = {
+	.usr_id = GMAX3405,
+	.i2c_address = 0x10,
+	.name = "gmax3405",
+	.input_freq = 40000,
+	.pixel_width = GMAX3405_WIDTH,
+	.pixel_height = GMAX3405_HEIGHT,
+	.pixel_bit = SENSOR_12_BIT,
+	.sensorMode = SEQUENTIAL_TRIGGER_MODE,
+	.map_config = &gmax3405_regmap_config,
+	.cam_com_ops = &gmax3405_common_ops,
+	.dtb_init = &gmax3405_dtb_init,
+	.board_init = &gmax3405_board_setup,
+	.sensor_init_param = &gmax3405_init_param,
+	.sensor_usr_set = &gmax3405_read_id_type,
+	.sensor_ioctl_set = &gmax3405_ioctl_set,
+	.sensor_stream_set = NULL,
+	.sensor_fmt_set = &sensor_set_fmt,
+	.sensor_fmt_get = &sensor_get_fmt,
+	.sensor_set_selection = sensor_set_selection,
+	.sensor_get_selection = sensor_get_selection,
+	.sensor_ctrls_init    = gmax3405_ctrls_init,
+};

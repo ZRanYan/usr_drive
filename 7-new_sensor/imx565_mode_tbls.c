@@ -4,6 +4,9 @@
 #define IMX565_WIDTH 4128
 #define IMX565_HEIGHT 3008
 
+#define BL_NV_IMX565_FULL_VERSION_EX \
+     "imx565 " BL_NV_SENSOR_FULL_VERSION
+
 static const SETTING_PARAM imx565SetParm[];
 static IMX_SENSOR_BIT_REG  sensor_imx565_bit[];
 static const unsigned int sensor_imx565_bit_num;
@@ -237,55 +240,17 @@ static struct camera_common_frmfmt imx565_frmfmt[] = {
 	{{IMX565_WIDTH, IMX565_HEIGHT}, imx565_62_6fps, 0, 0,IMX566_MODE_8BIT},
 };
 
-static int imx565_set_mode(struct tegracam_device *tc_dev)
-{	
-	return 0;
-}
-static int imx565_power_on(struct camera_common_data *s_data)
-{
-	return 0;
-}
-static int imx565_power_off(struct camera_common_data *s_data)
-{
-	return 0;
-}
-
-static struct camera_common_pdata *imx565_parse_dt(struct tegracam_device *tc_dev)
-{
-	struct device *dev = tc_dev->dev;
-	struct camera_common_pdata *board_priv_pdata;
-	board_priv_pdata = devm_kzalloc(dev,sizeof(*board_priv_pdata), GFP_KERNEL);
-	if (!board_priv_pdata)
-		return NULL;
-	return board_priv_pdata;	
-}
-static int imx565_power_get(struct tegracam_device *tc_dev)
-{
-	struct camera_common_data *s_data = tc_dev->s_data;
-	struct camera_common_power_rail *pw = s_data->power;
-	pw->state = SWITCH_OFF;
-	return 0;
-}
-static int imx565_power_put(struct tegracam_device *tc_dev)
-{
-	struct camera_common_data *s_data = tc_dev->s_data;
-	struct camera_common_power_rail *pw = s_data->power;
-	if (unlikely(!pw))
-		return -EFAULT;
-	return 0;
-}
-
 static struct camera_common_sensor_ops imx565_common_ops = {
 	.numfrmfmts = ARRAY_SIZE(imx565_frmfmt),
 	.frmfmt_table = imx565_frmfmt,		
-	.power_on = imx565_power_on,		
-	.power_off = imx565_power_off,		
+	.power_on = sensor_power_on,		
+	.power_off = sensor_power_off,		
 	.write_reg = imx_write_reg,		
 	.read_reg = imx_read_reg,		
-	.parse_dt = imx565_parse_dt,		
-	.power_get = imx565_power_get,		
-	.power_put = imx565_power_put,		
-	.set_mode = imx565_set_mode,		
+	.parse_dt = sensor_parse_dt,		
+	.power_get = sensor_power_get,		
+	.power_put = sensor_power_put,		
+	.set_mode = sensor_set_mode,		
 };
 
 static int sensor_power_on_set(struct camera_common_data *s_data)
@@ -383,25 +348,6 @@ err_reg:
 	camera_common_mclk_disable(s_data);
 	return err;
 }
-static int imx565_write_table(struct camera_common_data *s_data,
-				const SENSOR_REG_STRUCT table[])
-{
-	const struct reg_8 *next;
-	int ret = 0;
-	ret = regmap_util_write_table_8(s_data->regmap,
-					 table,
-					 NULL, 0,
-					 SENSOR_TABLE_WAIT_MS,
-					 SENSOR_TABLE_END);
-	for (next = table;; next++)
-	{
-		if (next->addr == SENSOR_TABLE_END)
-			break;
-		// sensor_read_reg(priv->s_data, next->addr, &regValue);
-		// dev_info(&priv->i2c_client->dev,"addr:0x%x set:0x%x \n", next->addr, regValue);
-	}
-	return ret;
-}
 
 static void imx565_init_param(struct nv_sony_senor *priv, int workMode)
 {
@@ -412,7 +358,7 @@ static void imx565_init_param(struct nv_sony_senor *priv, int workMode)
 	usleep_range(150, 160); // 延时150微秒
 	imx_write_reg(s_data, SENSOR_IMX_XMSTA, 1);
 
-	imx565_write_table(s_data, modeTable);
+	sensor_write_table(s_data, modeTable);
 
 	imx_write_reg(s_data, SENSOR_IMX_STANDBY, 0);
 	usleep_range(1138, 1148); // 延时1138微秒
@@ -626,8 +572,8 @@ int imx565_ioctl_set(struct nv_sony_senor *priv, unsigned int cmd, void *arg)
 	switch (cmd)
 	{
 		case V4L2_CID_GET_VERSION:
-			vc_info(dev, "get ver:%s \r\n", BL_NV_SENSOR_FULL_VERSION);
-			ver = BL_NV_SENSOR_FULL_VERSION;
+			vc_info(dev, "get ver:%s \r\n", BL_NV_IMX565_FULL_VERSION_EX);
+			ver = BL_NV_IMX565_FULL_VERSION_EX;
 			data.ver.len = strnlen(ver, SENSOR_VER_MAX_LEN - 1);
 			memcpy(data.ver.ver, ver, data.ver.len);
 			data.ver.ver[data.ver.len] = '\0';
@@ -643,6 +589,9 @@ int imx565_ioctl_set(struct nv_sony_senor *priv, unsigned int cmd, void *arg)
 			vc_info(dev, "Received custom data.reg opt:%d, addr:%d 0x%x, value:%d\n", \
 										data.reg.opt, data.reg.addr, data.reg.addr, data.reg.value);
 			ret = copy_to_user((SENSOR_DEBUG_REG_PARAMS __user *)arg, &data.reg, sizeof(data.reg));
+			break;
+		case CAM_GET_SENSOR_TYPE:
+			ret = (int)IMX565;
 			break;
 		case V4L2_CID_GET_TEMPERATURE_VAL:
 			{
@@ -668,64 +617,6 @@ int imx565_ioctl_set(struct nv_sony_senor *priv, unsigned int cmd, void *arg)
 			break;
 	}
 	return ret;
-}
-
-int imx565_set_fmt(struct nv_sony_senor *priv, struct v4l2_subdev *sd, struct v4l2_subdev_format *format)
-{
-	int ret;
-#ifdef USR_DEBUG_ENABLE
-	struct device *dev = priv->s_data->dev;
-#endif
-	if (format->which == V4L2_SUBDEV_FORMAT_TRY)
-	{
-		vc_info(dev, "Try format width:%d height:%d \n", format->format.width, format->format.height);
-		ret = camera_common_try_fmt(sd, &format->format);
-	}
-	else
-	{
-		vc_info(dev, "set format width:%d height:%d \n", format->format.width, format->format.height);
-		ret = camera_common_s_fmt(sd, &format->format);
-	}
-	return ret;
-}
-int imx565_get_fmt(struct nv_sony_senor *priv, struct v4l2_subdev *sd, struct v4l2_subdev_format *format)
-{
-	return camera_common_g_fmt(sd, &format->format);
-}
-int imx565_set_selection(struct nv_sony_senor *priv, struct v4l2_subdev_state *state, struct v4l2_subdev_selection *sel)
-{
-	struct v4l2_rect rect;
-#ifdef USR_DEBUG_ENABLE
-	struct device *dev = priv->s_data->dev;
-#endif
-	memcpy(&rect, &sel->r, sizeof(struct v4l2_rect));
-	if (sel->which == V4L2_SUBDEV_FORMAT_TRY) {
-		vc_info(dev, "try rect:%d %d %d %d \n", rect.left, rect.top, rect.height, rect.width);
-		if (state && state->pads)
-			state->pads->try_crop = rect;
-		return 0;
-	}
-	vc_info(dev, "set active rect:%d %d %d %d \n", rect.left, rect.top, rect.height, rect.width);
-	priv->m_rect = rect;
-	return 0;
-}
-int imx565_get_selection(struct nv_sony_senor *priv, struct v4l2_subdev_state *sd_state, struct v4l2_subdev_selection *sel)
-{
-	struct v4l2_rect *rect;
-#ifdef USR_DEBUG_ENABLE
-	struct device *dev = priv->s_data->dev;
-#endif
-	if (sel->which == V4L2_SUBDEV_FORMAT_TRY) {
-		rect = &sd_state->pads->try_crop;
-	} else {
-		if (priv)
-			rect = &priv->m_rect;
-		else
-			rect = &sd_state->pads->try_crop; /* fallback */
-	}
-	sel->r = *rect;
-	vc_info(dev, "which:0x%x rect:%d %d %d %d \n", sel->which, rect->left, rect->top, rect->height, rect->width);
-	return 0;
 }
 
 static const struct v4l2_ctrl_ops imx565_ctrl_ops = {
@@ -1037,8 +928,8 @@ static IMX_SENSOR_BIT_REG sensor_imx565_bit[] = { //默认是Normal模式的，�
 static const unsigned int sensor_imx565_bit_num = ARRAY_SIZE(sensor_imx565_bit);
 
 const struct nv_sensor_model_info imx565_i2c_info = {
-	.usr_id = 0,
-	.sensor_id = 0x1A,
+	.usr_id = IMX565,
+	.i2c_address = 0x1A,
 	.name = "imx565",
 	.input_freq = 74250,
 	.pixel_width = IMX565_WIDTH,
@@ -1053,9 +944,9 @@ const struct nv_sensor_model_info imx565_i2c_info = {
 	.sensor_usr_set = &sony_sensor_read_id_type,
 	.sensor_ioctl_set = &imx565_ioctl_set,
 	.sensor_stream_set = NULL,
-	.sensor_fmt_set = &imx565_set_fmt,
-	.sensor_fmt_get = &imx565_get_fmt,
-	.sensor_set_selection = imx565_set_selection,
-	.sensor_get_selection = imx565_get_selection,
+	.sensor_fmt_set = &sensor_set_fmt,
+	.sensor_fmt_get = &sensor_get_fmt,
+	.sensor_set_selection = sensor_set_selection,
+	.sensor_get_selection = sensor_get_selection,
 	.sensor_ctrls_init    = imx565_ctrls_init,
 };

@@ -36,11 +36,11 @@ int imx_write_reg(struct camera_common_data *s_data,
 	struct device *dev = s_data->dev;
 	err = regmap_write(s_data->regmap, addr, val);
 	if (err)
-		dev_err(dev, "%s: i2c write failed, 0x%x = %x\n",
-			__func__, addr, val);
+		dev_err(dev, "%s: i2c write failed, 0x%x = %x err:%d\n",
+			__func__, addr, val, err);
 	//printk("write addr:0x%X val:0x%02X\r\n", addr, val);
 	// printk("sensor.register(0x%X,  0,  8) =        0x%02X //\r\n", addr, val);
-
+	// printk("0x%x,0x%02x,\r\n", addr, val);
 	return err;
 }
 
@@ -66,8 +66,6 @@ void sony_sensor_read_id_type(struct nv_sony_senor *priv)
 	dev_info(dev, "Sony Sensor: IMX%d, Type: %s\n",
 		 id,
 		 is_mono ? "Monochrome" : "Color");
-
-	// sony_sensor_imx56x_get_temp(priv);
 	return;
 }
 
@@ -96,8 +94,7 @@ int sony_sensor_imx56x_get_temp(struct nv_sony_senor *priv)
 	vc_info(dev, "SENSOR_IMX_TEMPERATURE_EN 0x%x ret:%d\n", reg_val, err);
 	err = imx_read_reg(s_data, SENSOR_IMX_TEMPERATURE_VAL, &reg_val);
 	vc_info(dev, "SENSOR_IMX_TEMPERATURE_EN 0x%x ret:%d\n", reg_val, err);
-
-	return err;
+	return reg_val;
 }
 
 int sony_sensor_reg_debug_set(struct camera_common_data *s_data, SENSOR_DEBUG_REG_PARAMS *reg)
@@ -111,4 +108,141 @@ int sony_sensor_reg_debug_set(struct camera_common_data *s_data, SENSOR_DEBUG_RE
 		return imx_write_reg(s_data, reg->addr, reg->value);
 	}
 	return -1;
+}
+
+const struct regmap_config *sensor_get_regmap_config(void)
+{
+    static const struct regmap_config sensor_regmap_config = {
+        .reg_bits = 16,
+        .val_bits = 8,
+        .cache_type = REGCACHE_RBTREE,
+        .use_single_read = true,
+        .use_single_write = true,
+    };
+    return &sensor_regmap_config;
+}
+
+int sensor_power_get(struct tegracam_device *tc_dev)
+{
+	struct camera_common_data *s_data = tc_dev->s_data;
+	struct camera_common_power_rail *pw = s_data->power;
+	pw->state = SWITCH_OFF;
+	return 0;
+}
+
+int sensor_power_put(struct tegracam_device *tc_dev)
+{
+	struct camera_common_data *s_data = tc_dev->s_data;
+	struct camera_common_power_rail *pw = s_data->power;
+	if (unlikely(!pw))
+		return -EFAULT;
+	return 0;
+}
+
+int sensor_set_mode(struct tegracam_device *tc_dev)
+{	
+	return 0;
+}
+int sensor_power_on(struct camera_common_data *s_data)
+{
+	return 0;
+}
+int sensor_power_off(struct camera_common_data *s_data)
+{
+	return 0;
+}
+struct camera_common_pdata *sensor_parse_dt(struct tegracam_device *tc_dev)
+{
+	struct device *dev = tc_dev->dev;
+	struct camera_common_pdata *board_priv_pdata;
+	board_priv_pdata = devm_kzalloc(dev,sizeof(*board_priv_pdata), GFP_KERNEL);
+	if (!board_priv_pdata)
+		return NULL;
+	return board_priv_pdata;	
+}
+
+int sensor_write_table(struct camera_common_data *s_data,
+				const SENSOR_REG_STRUCT table[])
+{
+	const struct reg_8 *next;
+	int ret = 0;
+	for (next = table;; next++) {
+		if(SENSOR_TABLE_END == next->addr)
+		{
+			break;
+		}
+		else if(SENSOR_TABLE_WAIT_MS == next->addr)
+		{
+			msleep_range(next->val);
+			continue;
+		}
+		else
+		{
+			ret = imx_write_reg(s_data, next->addr, next->val);
+			if(0 != ret)
+			{
+				return ret;
+			}
+		}
+	}
+	return ret;
+}
+
+
+int sensor_set_fmt(struct nv_sony_senor *priv, struct v4l2_subdev *sd, struct v4l2_subdev_format *format)
+{
+	int ret;
+#ifdef USR_DEBUG_ENABLE
+	struct device *dev = priv->s_data->dev;
+#endif
+	if (format->which == V4L2_SUBDEV_FORMAT_TRY)
+	{
+		vc_info(dev, "Try format width:%d height:%d \n", format->format.width, format->format.height);
+		ret = camera_common_try_fmt(sd, &format->format);
+	}
+	else
+	{
+		vc_info(dev, "set format width:%d height:%d \n", format->format.width, format->format.height);
+		ret = camera_common_s_fmt(sd, &format->format);
+	}
+	return ret;
+}
+int sensor_get_fmt(struct nv_sony_senor *priv, struct v4l2_subdev *sd, struct v4l2_subdev_format *format)
+{
+	return camera_common_g_fmt(sd, &format->format);
+}
+int sensor_set_selection(struct nv_sony_senor *priv, struct v4l2_subdev_state *state, struct v4l2_subdev_selection *sel)
+{
+	struct v4l2_rect rect;
+#ifdef USR_DEBUG_ENABLE
+	struct device *dev = priv->s_data->dev;
+#endif
+	memcpy(&rect, &sel->r, sizeof(struct v4l2_rect));
+	if (sel->which == V4L2_SUBDEV_FORMAT_TRY) {
+		vc_info(dev, "try rect:%d %d %d %d \n", rect.left, rect.top, rect.height, rect.width);
+		if (state && state->pads)
+			state->pads->try_crop = rect;
+		return 0;
+	}
+	vc_info(dev, "set active rect:%d %d %d %d \n", rect.left, rect.top, rect.height, rect.width);
+	priv->m_rect = rect;
+	return 0;
+}
+int sensor_get_selection(struct nv_sony_senor *priv, struct v4l2_subdev_state *sd_state, struct v4l2_subdev_selection *sel)
+{
+	struct v4l2_rect *rect;
+#ifdef USR_DEBUG_ENABLE
+	struct device *dev = priv->s_data->dev;
+#endif
+	if (sel->which == V4L2_SUBDEV_FORMAT_TRY) {
+		rect = &sd_state->pads->try_crop;
+	} else {
+		if (priv)
+			rect = &priv->m_rect;
+		else
+			rect = &sd_state->pads->try_crop; /* fallback */
+	}
+	sel->r = *rect;
+	vc_info(dev, "which:0x%x rect:%d %d %d %d \n", sel->which, rect->left, rect->top, rect->height, rect->width);
+	return 0;
 }

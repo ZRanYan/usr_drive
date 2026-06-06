@@ -16,7 +16,11 @@
 #include <linux/of_graph.h>
 #include "imx566_mode_tbls.h"
 #include "imx565_mode_tbls.h"
+#include "sc535hgs_mode_tbls.h"
 #include <linux/pwm.h>
+
+#include "imx_sensor_common.h"
+
 
 static int workMode = 0;
 module_param(workMode, int, 0644);
@@ -24,6 +28,7 @@ MODULE_PARM_DESC(workMode, "work mode of sensor");
 static const struct of_device_id nv_sensor_of_match[] = {
 	{ .compatible = "sony,imx566", .data = &imx566_i2c_info  },
 	{ .compatible = "sony,imx565", .data = &imx565_i2c_info  },
+	{ .compatible = "sony,sc535", .data = &sc535_i2c_info  },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, nv_sensor_of_match);
@@ -37,7 +42,7 @@ static int nv_sensor_set_stream(struct v4l2_subdev *sd, int enable)
 		m_Mode_Info->sensor_stream_set(priv, enable);
 	return 0;
 }
-static int sensor_set_fmt(struct v4l2_subdev *sd,
+static int m_sensor_set_fmt(struct v4l2_subdev *sd,
 				   struct v4l2_subdev_state *sd_state,
 				   struct v4l2_subdev_format *format)
 {
@@ -49,7 +54,7 @@ static int sensor_set_fmt(struct v4l2_subdev *sd,
 		return m_Mode_Info->sensor_fmt_set(priv, sd, format);
 	return 0;
 }
-static int sensor_get_fmt(struct v4l2_subdev *sd,
+static int m_sensor_get_fmt(struct v4l2_subdev *sd,
 				   struct v4l2_subdev_state *sd_state,
 				   struct v4l2_subdev_format *format)
 {
@@ -126,8 +131,8 @@ static const struct v4l2_subdev_video_ops nv_sensor_video_ops = {
 	.g_input_status = sensor_g_input_status,
 };
 static const struct v4l2_subdev_pad_ops nv_sensor_pad_ops = {
-	.set_fmt = sensor_set_fmt,
-	.get_fmt = sensor_get_fmt,
+	.set_fmt = m_sensor_set_fmt,
+	.get_fmt = m_sensor_get_fmt,
 	.enum_mbus_code = camera_common_enum_mbus_code,
 	.enum_frame_size = camera_common_enum_framesizes,
 	.enum_frame_interval = camera_common_enum_frameintervals,
@@ -184,6 +189,70 @@ static int sensor_v4l2subdev_register(struct nv_sony_senor *priv)
 	}
 	return err;
 }
+static ssize_t debugfs_get_nv_name(struct file *file,
+                           char __user *buf,
+                           size_t count, loff_t *ppos)
+{
+	char tmp[32] = {0};
+	struct nv_sony_senor *priv = file->private_data;
+	const struct nv_sensor_model_info *m_Mode_Info = priv->model_info;
+	int len;
+	len = snprintf(tmp, sizeof(tmp),
+		       "%s\n", m_Mode_Info->name);
+	return simple_read_from_buffer(buf, count, ppos, tmp, len);;
+}
+static ssize_t debugfs_get_nv_id(struct file *file,
+                           char __user *buf,
+                           size_t count, loff_t *ppos)
+{
+	char tmp[32] = {0};
+	struct nv_sony_senor *priv = file->private_data;
+	const struct nv_sensor_model_info *m_Mode_Info = priv->model_info;
+	int len;
+	len = snprintf(tmp, sizeof(tmp),
+		       "%d\n", m_Mode_Info->usr_id);
+	return simple_read_from_buffer(buf, count, ppos, tmp, len);;
+}
+int debugfs_open(struct inode *inode, struct file *file)
+{
+    file->private_data = inode->i_private;
+    return 0;
+}
+static const struct file_operations nv_sensor_get_type_name = {
+    .owner = THIS_MODULE,
+	.open  = debugfs_open,
+    .read  = debugfs_get_nv_name,
+};
+static const struct file_operations nv_sensor_get_type_id = {
+    .owner = THIS_MODULE,
+	.open  = debugfs_open,
+    .read  = debugfs_get_nv_id,
+};
+static struct debugfs_node{
+    char *name;
+    const struct file_operations *fops;
+    umode_t perm;
+}sensor_fls[] = {
+    {.name = "sensor_type", .fops = &nv_sensor_get_type_name, .perm = S_IRUSR}, \
+	{.name = "sensor_id", .fops = &nv_sensor_get_type_id, .perm = S_IRUSR}, \
+};
+static int nv_sensor_debugfs_init(struct nv_sony_senor *sensor)
+{
+	u8 i;
+	sensor->debugfs_dir = debugfs_create_dir("nv_imx", NULL);
+	if (IS_ERR_OR_NULL(sensor->debugfs_dir))
+		return -ENOMEM;
+	for (i = 0; i < ARRAY_SIZE(sensor_fls); i++)
+		debugfs_create_file(sensor_fls[i].name, sensor_fls[i].perm, sensor->debugfs_dir,
+				    sensor, sensor_fls[i].fops);
+    return 0;
+}
+static void nv_sensor_debugfs_remove(struct nv_sony_senor *priv)
+{
+	debugfs_remove_recursive(priv->debugfs_dir);
+	priv->debugfs_dir = NULL;
+}
+
 static int nv_sensor_probe(struct i2c_client *client,const struct i2c_device_id *id)
 {
 	static u8 i = 0;
@@ -246,8 +315,10 @@ static int nv_sensor_probe(struct i2c_client *client,const struct i2c_device_id 
 			return err;
 		}
 	}
+
 	if(NULL != m_Mode_Info->sensor_init_param)
 		m_Mode_Info->sensor_init_param(priv, workMode);
+
 	err = sensor_v4l2subdev_register(priv);
 	if (err) {
 		dev_err(dev, "sensor v4l2 subdev registration failed\n");
@@ -255,6 +326,11 @@ static int nv_sensor_probe(struct i2c_client *client,const struct i2c_device_id 
 	}
 	if(NULL != m_Mode_Info->sensor_usr_set)
 		m_Mode_Info->sensor_usr_set(priv);
+	
+	err = nv_sensor_debugfs_init(priv);
+	if (err)
+		vc_warn(&client->dev, "debugfs create failed\n");
+
 	return 0;
 }
 #if defined(NV_I2C_DRIVER_STRUCT_REMOVE_RETURN_TYPE_INT) /* Linux 6.1 */
@@ -274,6 +350,7 @@ nv_sensor_remove(struct i2c_client *client)
 		return;
 #endif
 	priv = (struct nv_sony_senor *)s_data->priv;
+	nv_sensor_debugfs_remove(priv);
 	tegracam_v4l2subdev_unregister(priv->tc_dev);
 	tegracam_device_unregister(priv->tc_dev);
 #if defined(NV_I2C_DRIVER_STRUCT_REMOVE_RETURN_TYPE_INT) /* Linux 6.1 */

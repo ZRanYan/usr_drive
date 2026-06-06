@@ -57,7 +57,7 @@ static unsigned int g_inter_pwm_target_count = 1;
 static u16 g_led_flash_count[3] = {0}; //3个led灯的定时器计数值
 
 //单独rgbw闪烁的配置参数
-static u8 g_pwm_target_count = 1; // 任意个方波
+static u8 g_pwm_target_count = 0; // 任意个方波
 static volatile ktime_t g_interval;
 static ktime_t g_stage_1[4]; //开启led灯，和开启sensor曝光
 static ktime_t g_stage_2[4]; //关闭led灯
@@ -84,6 +84,7 @@ enum hrtimer_restart rgb_single_set_callback(struct hrtimer *timer)
     if(0 == g_state%3)
     {
         g_interval = g_stage_1[mIndex];
+        //printk("87 line index:%d g_state:%d g_pwm_count:%d mIndex:%d\r\n", g_state%3, g_state, g_pwm_count, mIndex);
         gpiod_set_value(gdev->output_gpios->desc[IO_RES_SET_TRIG_SENSOR], 1);
         gpiod_set_value(gdev->dlpRgbSet.rgb_gpios->desc[mIndex], 1);
     }
@@ -91,21 +92,21 @@ enum hrtimer_restart rgb_single_set_callback(struct hrtimer *timer)
     {
         g_interval = g_stage_2[mIndex];
         gpiod_set_value(gdev->dlpRgbSet.rgb_gpios->desc[mIndex], 0);
-        // printk("273 line g_state:%d g_pwm_count:%d mIndex:%d\r\n", g_state ,g_pwm_count, mIndex);
+        //printk("95 line index:%d g_state:%d g_pwm_count:%d mIndex:%d\r\n", g_state%3, g_state, g_pwm_count, mIndex);
         if (0 == ktime_to_ns(g_interval))
         {
             g_interval = g_stage_3[mIndex];
             gpiod_set_value(gdev->output_gpios->desc[IO_RES_SET_TRIG_SENSOR], 0);
             g_state++;
             g_pwm_count++;
-            // printk("280 line g_state:%d g_pwm_count:%d mIndex:%d\r\n", g_state ,g_pwm_count, mIndex);
+            //printk("102 line index:%d g_state:%d g_pwm_count:%d mIndex:%d\r\n", g_state%3, g_state, g_pwm_count, mIndex);
         }
     }
     else if(2 == g_state%3)
     {
         g_interval = g_stage_3[mIndex];
         gpiod_set_value(gdev->output_gpios->desc[IO_RES_SET_TRIG_SENSOR], 0);
-        // printk("287 line g_state:%d g_pwm_count:%d mIndex:%d\r\n", g_state ,g_pwm_count, mIndex);
+        //printk("109 line index:%d g_state:%d g_pwm_count:%d mIndex:%d\r\n", g_state%3, g_state, g_pwm_count, mIndex);
     }
     g_state++;
     g_pwm_count++;
@@ -120,14 +121,12 @@ enum hrtimer_restart rgb_single_set_callback(struct hrtimer *timer)
 }
 static void start_timer_on_cpu(void *data)
 {
-    u8 *count = data;
     static struct hrtimer pwm_timer;
     if(0 != g_pwm_count)
     {
         return;
     }
     memset(&pwm_timer, 0, sizeof(pwm_timer));
-    g_pwm_target_count = (*count) * 3;
     g_pwm_count = 0;
     g_state = 0;
     hrtimer_init(&pwm_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED_HARD);
@@ -142,7 +141,11 @@ static int rgb_flash_fn(void *data)
         wait_event_interruptible(ws->waitQueue, ws->thread_flag || kthread_should_stop());
         if (kthread_should_stop())
             break;
-        start_timer_on_cpu(&ws->rgb_param.num);
+        if(0 != ws->rgb_param.num)
+        {
+            g_pwm_target_count = (ws->rgb_param.num * 3);
+            start_timer_on_cpu(NULL);
+        }
         ws->thread_flag = 0; // 清除标志位
     }
     return 0;
@@ -473,7 +476,7 @@ static void rgb_param_legal_check(IO_RGB_SET *set, IO_RGB_DRIVE_SET *out)
             out->expoSensor = out->exposureTime[i];
         }
 
-        out->periodTime[i] = out->expoSensor + MIN_FALL_TIME;
+        out->periodTime[i] = out->expoSensor;
         if (out->periodTime[i] < MIN_RISE_TIME)
         {
             out->periodTime[i] = MIN_RISE_TIME;
@@ -609,8 +612,12 @@ static long iomanager_ioctl(struct file *fp, unsigned int cmd, unsigned long arg
         memset(&driveRgbSet, 0, sizeof(driveRgbSet));
         if (copy_from_user(&mRgbSet, (struct IO_RGB_SET *)arg, sizeof(mRgbSet)))
             return -EINVAL;
-        rgb_param_legal_check(&mRgbSet, &driveRgbSet);
         vc_info(gdev->dev, "mRgbSet.num:%u pwmValue:%u \n", mRgbSet.num, mRgbSet.pwmValue);
+        vc_info(gdev->dev, "mRgbSet exposureTime r:%u g:%u b:%u w:%u", mRgbSet.exposureTime[0], mRgbSet.exposureTime[1],
+                mRgbSet.exposureTime[2], mRgbSet.exposureTime[3]);
+        vc_info(gdev->dev, "mRgbSet periodTime:%u %u %u %u\r\n", mRgbSet.periodTime[0],
+                mRgbSet.periodTime[1], mRgbSet.periodTime[2], mRgbSet.periodTime[3]);
+        rgb_param_legal_check(&mRgbSet, &driveRgbSet);
         vc_info(gdev->dev, "exposureTime r:%u g:%u b:%u w:%u", driveRgbSet.exposureTime[0], driveRgbSet.exposureTime[1],
                 driveRgbSet.exposureTime[2], driveRgbSet.exposureTime[3]);
         vc_info(gdev->dev, "expoSensor:%u  periodTime:%u %u %u %u\r\n", driveRgbSet.expoSensor, driveRgbSet.periodTime[0],
@@ -750,9 +757,13 @@ static long iomanager_ioctl(struct file *fp, unsigned int cmd, unsigned long arg
                     g_stage_index[index_tou++] = index;
                 }
             }
-            gdev->wq_rgb->rgb_param.num = index_tou; //配置总的亮灯数量
+            vc_info(gdev->dev, "IO_SET_TRIG_START index_tou:%d \n", index_tou);
+            gdev->wq_rgb->rgb_param.num = index_tou;
+            if(0 == index_tou)
+            {
+                return 0;
+            }
             gdev->wq_rgb->thread_flag = 1;
-            vc_info(gdev->dev, "IO_SET_TRIG_START \n");
             wake_up(&gdev->wq_rgb->waitQueue);
         }
         break;

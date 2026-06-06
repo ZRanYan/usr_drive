@@ -1,6 +1,10 @@
 #include "imx566_mode_tbls.h"
 #include "imx_sensor_common.h"
 
+#define BL_NV_IMX566_FULL_VERSION_EX \
+     "imx566 " BL_NV_SENSOR_FULL_VERSION
+
+
 static const SETTING_PARAM imx566SetParm[];
 static IMX_SENSOR_BIT_REG  sensor_imx566_bit[];
 static const unsigned int sensor_imx566_bit_num;
@@ -253,55 +257,17 @@ static struct camera_common_frmfmt imx566_frmfmt[] = {
 	{{2856, 2848}, imx566_62_6fps, 0, 0,IMX566_MODE_2856X2848_8BIT},
 };
 
-static int imx566_set_mode(struct tegracam_device *tc_dev)
-{	
-	return 0;
-}
-static int imx566_power_on(struct camera_common_data *s_data)
-{
-	return 0;
-}
-static int imx566_power_off(struct camera_common_data *s_data)
-{
-	return 0;
-}
-
-static struct camera_common_pdata *imx566_parse_dt(struct tegracam_device *tc_dev)
-{
-	struct device *dev = tc_dev->dev;
-	struct camera_common_pdata *board_priv_pdata;
-	board_priv_pdata = devm_kzalloc(dev,sizeof(*board_priv_pdata), GFP_KERNEL);
-	if (!board_priv_pdata)
-		return NULL;
-	return board_priv_pdata;	
-}
-static int imx566_power_get(struct tegracam_device *tc_dev)
-{
-	struct camera_common_data *s_data = tc_dev->s_data;
-	struct camera_common_power_rail *pw = s_data->power;
-	pw->state = SWITCH_OFF;
-	return 0;
-}
-static int imx566_power_put(struct tegracam_device *tc_dev)
-{
-	struct camera_common_data *s_data = tc_dev->s_data;
-	struct camera_common_power_rail *pw = s_data->power;
-	if (unlikely(!pw))
-		return -EFAULT;
-	return 0;
-}
-
 static struct camera_common_sensor_ops imx566_common_ops = {
 	.numfrmfmts = ARRAY_SIZE(imx566_frmfmt),
 	.frmfmt_table = imx566_frmfmt,		
-	.power_on = imx566_power_on,		
-	.power_off = imx566_power_off,		
+	.power_on = sensor_power_on,		
+	.power_off = sensor_power_off,		
 	.write_reg = imx_write_reg,		
 	.read_reg = imx_read_reg,		
-	.parse_dt = imx566_parse_dt,		
-	.power_get = imx566_power_get,		
-	.power_put = imx566_power_put,		
-	.set_mode = imx566_set_mode,		
+	.parse_dt = sensor_parse_dt,		
+	.power_get = sensor_power_get,		
+	.power_put = sensor_power_put,		
+	.set_mode = sensor_set_mode,		
 };
 
 static int sensor_power_on_set(struct camera_common_data *s_data)
@@ -399,39 +365,15 @@ err_reg:
 	camera_common_mclk_disable(s_data);
 	return err;
 }
-static int imx566_write_table(struct camera_common_data *s_data,
-				const SENSOR_REG_STRUCT table[])
-{
-	const struct reg_8 *next;
-	int ret = 0;
-	for (next = table;; next++) {
-		if(SENSOR_TABLE_END == next->addr)
-		{
-			break;
-		}
-		else
-		{
-			ret = imx_write_reg(s_data, next->addr, next->val);
-			if(0 != ret)
-			{
-				return ret;
-			}
-		}
-	}
-	return ret;
-}
 
 static void imx566_init_param(struct nv_sony_senor *priv, int workMode)
 {
-	SENSOR_REG_STRUCT *modeTable = mode_table[workMode];
 	struct camera_common_data *s_data = priv->s_data;
 	imx_write_reg(s_data, SENSOR_IMX_STANDBY, 1);
 	usleep_range(150, 160); // 延时150微秒
 	usleep_range(150, 160); // 延时150微秒
 	// imx_write_reg(s_data, SENSOR_IMX_XMSTA, 1);
-
-	imx566_write_table(s_data, modeTable);
-
+	sensor_write_table(s_data, mode_table[workMode]);
 	imx_write_reg(s_data, SENSOR_IMX_STANDBY, 0);
 	usleep_range(1138, 1148); // 延时1138微秒
 	// imx_write_reg(s_data, SENSOR_IMX_XMSTA, 0);
@@ -661,8 +603,8 @@ int imx566_ioctl_set(struct nv_sony_senor *priv, unsigned int cmd, void *arg)
 	switch (cmd)
 	{
 		case V4L2_CID_GET_VERSION:
-			vc_info(dev, "get ver:%s \r\n", BL_NV_SENSOR_FULL_VERSION);
-			ver = BL_NV_SENSOR_FULL_VERSION;
+			vc_info(dev, "get ver:%s \r\n", BL_NV_IMX566_FULL_VERSION_EX);
+			ver = BL_NV_IMX566_FULL_VERSION_EX;
 			data.ver.len = strnlen(ver, SENSOR_VER_MAX_LEN - 1);
 			memcpy(data.ver.ver, ver, data.ver.len);
 			data.ver.ver[data.ver.len] = '\0';
@@ -675,6 +617,9 @@ int imx566_ioctl_set(struct nv_sony_senor *priv, unsigned int cmd, void *arg)
 			vc_info(dev, "Received custom data.reg: %d, %d, %d\n", data.reg.opt, data.reg.addr, data.reg.value);
 			sony_sensor_reg_debug_set(priv->s_data, &data.reg);
 			ret = copy_to_user((SENSOR_DEBUG_REG_PARAMS __user *)arg, &data.reg, sizeof(data.reg));
+			break;
+		case CAM_GET_SENSOR_TYPE:
+			ret = (int)IMX566;
 			break;
 		case V4L2_CID_GET_TEMPERATURE_VAL:
 			{
@@ -728,64 +673,6 @@ int imx566_ioctl_set(struct nv_sony_senor *priv, unsigned int cmd, void *arg)
 			break;
 	}
 	return ret;
-}
-
-int imx566_set_fmt(struct nv_sony_senor *priv, struct v4l2_subdev *sd, struct v4l2_subdev_format *format)
-{
-	int ret;
-#ifdef USR_DEBUG_ENABLE
-	struct device *dev = priv->s_data->dev;
-#endif
-	if (format->which == V4L2_SUBDEV_FORMAT_TRY)
-	{
-		vc_info(dev, "Try format width:%d height:%d \n", format->format.width, format->format.height);
-		ret = camera_common_try_fmt(sd, &format->format);
-	}
-	else
-	{
-		vc_info(dev, "set format width:%d height:%d \n", format->format.width, format->format.height);
-		ret = camera_common_s_fmt(sd, &format->format);
-	}
-	return ret;
-}
-int imx566_get_fmt(struct nv_sony_senor *priv, struct v4l2_subdev *sd, struct v4l2_subdev_format *format)
-{
-	return camera_common_g_fmt(sd, &format->format);
-}
-int imx566_set_selection(struct nv_sony_senor *priv, struct v4l2_subdev_state *state, struct v4l2_subdev_selection *sel)
-{
-	struct v4l2_rect rect;
-#ifdef USR_DEBUG_ENABLE
-	struct device *dev = priv->s_data->dev;
-#endif
-	memcpy(&rect, &sel->r, sizeof(struct v4l2_rect));
-	if (sel->which == V4L2_SUBDEV_FORMAT_TRY) {
-		vc_info(dev, "try rect:%d %d %d %d \n", rect.left, rect.top, rect.height, rect.width);
-		if (state && state->pads)
-			state->pads->try_crop = rect;
-		return 0;
-	}
-	vc_info(dev, "set active rect:%d %d %d %d \n", rect.left, rect.top, rect.height, rect.width);
-	priv->m_rect = rect;
-	return 0;
-}
-int imx566_get_selection(struct nv_sony_senor *priv, struct v4l2_subdev_state *sd_state, struct v4l2_subdev_selection *sel)
-{
-	struct v4l2_rect *rect;
-#ifdef USR_DEBUG_ENABLE
-	struct device *dev = priv->s_data->dev;
-#endif
-	if (sel->which == V4L2_SUBDEV_FORMAT_TRY) {
-		rect = &sd_state->pads->try_crop;
-	} else {
-		if (priv)
-			rect = &priv->m_rect;
-		else
-			rect = &sd_state->pads->try_crop; /* fallback */
-	}
-	sel->r = *rect;
-	vc_info(dev, "which:0x%x rect:%d %d %d %d \n", sel->which, rect->left, rect->top, rect->height, rect->width);
-	return 0;
 }
 
 static const struct v4l2_ctrl_ops imx566_ctrl_ops = {
@@ -1091,8 +978,8 @@ static IMX_SENSOR_BIT_REG sensor_imx566_bit[] = { //默认是Normal模式的，�
 static const unsigned int sensor_imx566_bit_num = ARRAY_SIZE(sensor_imx566_bit);
 
 const struct nv_sensor_model_info imx566_i2c_info = {
-	.usr_id = 0,
-	.sensor_id = 0x1A,
+	.usr_id = IMX566,
+	.i2c_address = 0x1A,
 	.name = "imx566",
 	.input_freq = 74250,
 	.pixel_width = 2856,
@@ -1107,9 +994,9 @@ const struct nv_sensor_model_info imx566_i2c_info = {
 	.sensor_usr_set = &sony_sensor_read_id_type,
 	.sensor_ioctl_set = &imx566_ioctl_set,
 	.sensor_stream_set = NULL,
-	.sensor_fmt_set = &imx566_set_fmt,
-	.sensor_fmt_get = &imx566_get_fmt,
-	.sensor_set_selection = imx566_set_selection,
-	.sensor_get_selection = imx566_get_selection,
+	.sensor_fmt_set = &sensor_set_fmt,
+	.sensor_fmt_get = &sensor_get_fmt,
+	.sensor_set_selection = sensor_set_selection,
+	.sensor_get_selection = sensor_get_selection,
 	.sensor_ctrls_init    = imx566_ctrls_init,
 };

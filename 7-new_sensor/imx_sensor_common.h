@@ -1,4 +1,3 @@
-
 #ifndef _IMX_SENSOR_COMMON_H_
 #define _IMX_SENSOR_COMMON_H_
 
@@ -25,5 +24,19 @@ int sony_sensor_imx56x_get_temp(struct nv_sony_senor *priv);
 
 int sony_sensor_reg_debug_set(struct camera_common_data *s_data, SENSOR_DEBUG_REG_PARAMS *data);
 
+const struct regmap_config *sensor_get_regmap_config(void);
+
+int sensor_power_get(struct tegracam_device *tc_dev);
+int sensor_power_put(struct tegracam_device *tc_dev);
+int sensor_set_mode(struct tegracam_device *tc_dev);
+int sensor_power_on(struct camera_common_data *s_data);
+int sensor_power_off(struct camera_common_data *s_data);
+struct camera_common_pdata *sensor_parse_dt(struct tegracam_device *tc_dev);
+int sensor_write_table(struct camera_common_data *s_data,
+				const SENSOR_REG_STRUCT table[]);
+int sensor_set_fmt(struct nv_sony_senor *priv, struct v4l2_subdev *sd, struct v4l2_subdev_format *format);
+int sensor_get_fmt(struct nv_sony_senor *priv, struct v4l2_subdev *sd, struct v4l2_subdev_format *format);
+int sensor_set_selection(struct nv_sony_senor *priv, struct v4l2_subdev_state *state, struct v4l2_subdev_selection *sel);
+int sensor_get_selection(struct nv_sony_senor *priv, struct v4l2_subdev_state *sd_state, struct v4l2_subdev_selection *sel);
 
 #endif

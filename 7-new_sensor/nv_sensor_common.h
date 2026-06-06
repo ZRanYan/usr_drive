@@ -7,6 +7,8 @@
 #include <media/tegracam_utils.h>
 #include <linux/pwm.h>
 #include <linux/gpio/consumer.h>
+#include <linux/debugfs.h>
+#include <linux/uaccess.h>
 #include "version.h"
 
 // #define USR_DEBUG_ENABLE 
@@ -29,7 +31,7 @@
     #define vc_err(dev, fmt, ...)  
 #endif
 
-#define BL_NV_IMX_SENSOR_VER "V0.2.0"
+#define BL_NV_IMX_SENSOR_VER "V0.3.0"
 
 #define BL_NV_SENSOR_FULL_VERSION \
     BL_NV_IMX_SENSOR_VER " (" GIT_COMMIT " on " GIT_BRANCH " " PROGRAM_DATE ")"
@@ -100,7 +102,12 @@
 #define SENSOR_IMX_ADBIT						0x3200
 #define SENSOR_IMX_TOUT0SEL					0x3436
 
+#define SENSOR_SC_SLEEP_MODE				0x2100
+#define SENSOR_SC_RB_ROWS_0					0x3231
+#define SENSOR_SC_RB_ROWS_1					0x3230
 
+#define SENSOR_SC_BLANK_ROWS_0				0x320f
+#define SENSOR_SC_BLANK_ROWS_1				0x320e
 
 #define CALCULATE_ROUND(dim, step, flags)	\
 	((flags) & V4L2_SEL_FLAG_GE			\
@@ -122,8 +129,9 @@
 #define CAM_SET_BLACK_LEVEL					(V4L2_CID_USER_BASE + 8)
 #define CAM_SET_HFLIP						(V4L2_CID_USER_BASE + 9)
 #define CAM_SET_VFLIP						(V4L2_CID_USER_BASE + 10)
-
-//私有的
+//私有的sc535hgs的配置参数
+#define CAM_SET_EXPO_PERIOD_PARAM			(V4L2_CID_USER_BASE + 11)
+#define CAM_GET_SENSOR_TYPE					(V4L2_CID_USER_BASE + 12)
 
 struct nv_sony_senor;
 
@@ -146,6 +154,14 @@ typedef enum
 	VERTICAL = 0,
 	HORIZONTAL = 1
 }FILP_TYPE;
+
+typedef enum
+{
+	IMX565 = 0,
+	IMX566 = 1,
+	SC535HGS = 2,
+	GMAX3405 = 3
+} SENSOR_TYPE_ENUM;
 
 typedef struct{
     __u8 opt; //0-代表读，1-代表写
@@ -216,9 +232,17 @@ typedef struct
 	u8 val_2[3]; //针对isReuseBinning=2的情况，表示复用vmax，gmrwt，gsdly，hmax寄存器值,Normal模式的寄存器值,bingning模式的寄存器值
 } IMX_SENSOR_BIT_REG;
 
+typedef struct
+{
+	u8 type; //1-是配置参数，0-是获取系统的参数
+	u32 expo; //配置曝光时间，单位微秒，必须是6的倍数
+	u32 period; //配置出图的周期时间，单位微秒，必须是6的倍数
+	u32 minPeriod; //根据曝光时间和出图的行数计算最小的帧周期时间参数，单位微秒
+}SENSOR_EXPO_PERIOD_PARAM;
+
 struct nv_sensor_model_info {
 	__u8 usr_id;
-	__u16 sensor_id;
+	__u16 i2c_address;
 	char name[32];
 	__u32 input_freq;
 	__u16 pixel_width;
@@ -255,15 +279,19 @@ struct nv_sony_senor
 	struct v4l2_rect	m_rect;
 	bool is_streaming;
 
-	// following add by howe
-	struct gpio_desc *pwdn_gpio;	// power endable
+	//sony的主要配置接口
+	struct gpio_desc *pwdn_gpio;	// 时钟上电管脚
 	struct gpio_desc *xclr_gpio;	// xclr
 	struct gpio_desc *pwgd_gpio;	// power good
 	struct gpio_desc *inck_gpio;	// inck enable
 	struct gpio_desc *xmaster_gpio; // xmaster
 	struct pwm_device *pwm_xhs;
-	struct pwm_state pwm_state;
+	//思特微主要的配置接口
+	struct gpio_desc *reset_gpio;	// 用于sensor上电
+	struct gpio_desc *pwdnb_gpio; 	//用于sensor的上电
+	struct gpio_desc *fsync_gpio;	//用于sensor的触发出图
 
+	struct pwm_state pwm_state;
 	__u32 x; // roi参数
 	__u32 y;
 	__u32 height; // 图像的高度
@@ -280,6 +308,7 @@ struct nv_sony_senor
 	__u8 binning; //暂存的binning or subsampling的状态
 	bool vflip_status; //暂存的上下翻转的状态
 
+	struct dentry *debugfs_dir; //调试节点
 	int numctrls;
 	struct v4l2_ctrl *expo;		   // 曝光时间
 	struct v4l2_ctrl *pulse_set;   // 输出io口配置，TOUT0 pin，TOUT1 pin，TOUT2 pin
