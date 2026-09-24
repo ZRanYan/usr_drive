@@ -10,18 +10,22 @@
 static const SETTING_PARAM imx565SetParm[];
 static IMX_SENSOR_BIT_REG  sensor_imx565_bit[];
 static const unsigned int sensor_imx565_bit_num;
-static const char * const scene_mode_menu[];
-static int imx565_s_ctrl(struct v4l2_ctrl *ctrl);
+// static const char * const scene_mode_menu[];
+// static int imx565_s_ctrl(struct v4l2_ctrl *ctrl);
+static int imx565_sensor_set_black_level(struct camera_common_data *s_data, s64 val);
+static int imx565_sensor_set_gain(struct camera_common_data *s_data, s64 val);
+static int imx565_sensor_set_filp(struct camera_common_data *s_data, FILP_TYPE type, s64 val);
+// static int sensor_debug_pic_set(struct camera_common_data *s_data, uint8_t mode);
 
 static const struct regmap_config imx565_regmap_config = {
 	.reg_bits = 16,
 	.val_bits = 8,
-	.cache_type = REGCACHE_RBTREE,
+	.cache_type = REGCACHE_NONE,
 	.use_single_read = true,
 	.use_single_write = true,
 };
 
-static void imx565_dtb_init(struct nv_sony_senor *priv)
+static int imx565_dtb_init(struct nv_sony_sensor *priv)
 {
 	struct device *dev = &priv->i2c_client->dev;
 	priv->pwdn_gpio =  devm_gpiod_get(dev, "pwdn", GPIOD_OUT_LOW);
@@ -54,9 +58,9 @@ static void imx565_dtb_init(struct nv_sony_senor *priv)
 		dev_err(dev, "Failed to get pwm_xhs\n");
 		goto error;
 	}
-	return;
+	return 0;
 error:
-	return;
+	return -1;
 }
 
 enum {
@@ -126,7 +130,8 @@ static SENSOR_REG_STRUCT imx565_8bit_4line_master_init[] = {
 	{0x36E8, 0x11  }, // 
 	{0x36F5, 0x0F  }, // 
 	{0x3797, 0x20  }, // 
-	{0x3904, 0x02  }, // LANESEL  
+	{0x3904, 0x02  }, // LANESEL 
+	{0x3942, 0x02  },
 	{0x3E2E, 0x07  }, // 
 	{0x3E30, 0x4E  }, // 
 	{0x3E6E, 0x07  }, // 
@@ -256,7 +261,7 @@ static struct camera_common_sensor_ops imx565_common_ops = {
 static int sensor_power_on_set(struct camera_common_data *s_data)
 {
 	int err = 0;
-	struct nv_sony_senor *priv = (struct nv_sony_senor *)s_data->priv;
+	struct nv_sony_sensor *priv = (struct nv_sony_sensor *)s_data->priv;
 	struct camera_common_power_rail *pw = s_data->power;
 	struct device *dev = s_data->dev;
 	char mNum = 50;
@@ -301,7 +306,7 @@ static int sensor_power_on_set(struct camera_common_data *s_data)
 }
 static int sensor_power_off_set(struct camera_common_data *s_data)
 {
-	struct nv_sony_senor *priv = (struct nv_sony_senor *)s_data->priv;
+	struct nv_sony_sensor *priv = (struct nv_sony_sensor *)s_data->priv;
 	struct camera_common_power_rail *pw = s_data->power;
 	gpiod_set_value(priv->inck_gpio, 0);
 	usleep_range(1000, 1010);
@@ -316,7 +321,7 @@ static int sensor_power_off_set(struct camera_common_data *s_data)
 	pw->state = SWITCH_OFF;
 	return 0;
 }
-static int imx565_board_setup(struct nv_sony_senor *priv)
+static int imx565_board_setup(struct nv_sony_sensor *priv, MODE_TYPE mode)
 {
 	struct camera_common_data *s_data = priv->s_data;
 	struct device *dev = s_data->dev;
@@ -349,9 +354,9 @@ err_reg:
 	return err;
 }
 
-static void imx565_init_param(struct nv_sony_senor *priv, int workMode)
+static void imx565_init_param(struct nv_sony_sensor *priv, int modeType)
 {
-	SENSOR_REG_STRUCT *modeTable = mode_table[workMode];
+	SENSOR_REG_STRUCT *modeTable = mode_table[modeType];
 	struct camera_common_data *s_data = priv->s_data;
 	imx_write_reg(s_data, SENSOR_IMX_STANDBY, 1);
 	usleep_range(150, 160); // 延时150微秒
@@ -365,7 +370,7 @@ static void imx565_init_param(struct nv_sony_senor *priv, int workMode)
 	imx_write_reg(s_data, SENSOR_IMX_XMSTA, 0);
 }
 
-void imx565_read_id_type(struct nv_sony_senor *priv)
+void imx565_read_id_type(struct nv_sony_sensor *priv)
 {
 	int err = 0;
 	u8 reg_val = 0;
@@ -377,7 +382,7 @@ void imx565_read_id_type(struct nv_sony_senor *priv)
 	dev_info(dev, "read sensor 0x%x : 0x%x ret:%d\r\n", SENSOR_MODEL_ID_ADDR_LSB, reg_val, err);
 	return;
 }
-void imx565_update_vmax_fps(struct nv_sony_senor *sensor, __u32 h)
+void imx565_update_vmax_fps(struct nv_sony_sensor *sensor, __u32 h)
 {
 #ifdef USR_DEBUG_ENABLE
 	struct camera_common_data *s_data = sensor->s_data;
@@ -393,7 +398,7 @@ void imx565_update_vmax_fps(struct nv_sony_senor *sensor, __u32 h)
 	vc_info(s_data->dev, "update:vmax:%d period:%d fps:%d.%d \r\n", sensor->vmax, sensor->period, sensor->fps/10, sensor->fps%10);
 	return;
 }
-int imx565_sensor_update_xhs_pwm(struct nv_sony_senor *priv)
+int imx565_sensor_update_xhs_pwm(struct nv_sony_sensor *priv)
 {
 	int ret = 0;
 	u64 mPeriod = 0; 
@@ -430,7 +435,7 @@ int imx565_sensor_update_xhs_pwm(struct nv_sony_senor *priv)
 	}
 	return ret;
 }
-void imx565_calculate_minimum_interval_time(struct nv_sony_senor *sen, SENSOR_ATTRIBUTE *param)
+void imx565_calculate_minimum_interval_time(struct nv_sony_sensor *sen, SENSOR_ATTRIBUTE *param)
 {
 	//计算All-pixel模式的Sequential Trigger Mode
 	param->exposureUnit = sen->period/1000;
@@ -438,7 +443,7 @@ void imx565_calculate_minimum_interval_time(struct nv_sony_senor *sen, SENSOR_AT
 	param->min_trigger_rise = ((sen->vmax + 1)*(sen->period))/1000;
 	param->max_frame = sen->fps;
 }
-static int imx565_set_roi_format(struct nv_sony_senor *priv, SENSOR_FORMAT_ROI_PARAM *roi_param)
+static int imx565_set_roi_format(struct nv_sony_sensor *priv, SENSOR_FORMAT_ROI_PARAM *roi_param)
 {
 	uint8_t i = 0;
 	int err = 0;
@@ -453,7 +458,7 @@ static int imx565_set_roi_format(struct nv_sony_senor *priv, SENSOR_FORMAT_ROI_P
 	priv->height = CALCULATE_ROUND(roi_param->height, 8, V4L2_SEL_FLAG_LE);
 	priv->binning = roi_param->binningMode; //更新binning参数
 	priv->bit = roi_param->bitMode;
-	imx565_frmfmt[0].size.width = ((0 == priv->binning) ? imx565_i2c_info.pixel_width : imx565_i2c_info.pixel_width / 2);
+	imx565_frmfmt[0].size.width = priv->width;
 	imx565_frmfmt[0].size.height = priv->height;
 	if (SENSOR_BINNING_2X_DISABLE == priv->binning)
 	{
@@ -559,7 +564,7 @@ static int imx565_set_roi_format(struct nv_sony_senor *priv, SENSOR_FORMAT_ROI_P
 	imx_write_reg(s_data, SENSOR_IMX_XMSTA, 0);
 	return err;
 }
-int imx565_ioctl_set(struct nv_sony_senor *priv, unsigned int cmd, void *arg)
+int imx565_ioctl_set(struct nv_sony_sensor *priv, unsigned int cmd, void *arg)
 {
 	union sensor_ioctl_data data;
 #ifdef USR_DEBUG_ENABLE
@@ -567,6 +572,7 @@ int imx565_ioctl_set(struct nv_sony_senor *priv, unsigned int cmd, void *arg)
 #endif
 	int ret = 0;
 	int tmpValue = 0;
+	s64 val;
 	const char *ver;
 	memset(&data, 0, sizeof(data));
 	switch (cmd)
@@ -613,130 +619,158 @@ int imx565_ioctl_set(struct nv_sony_senor *priv, unsigned int cmd, void *arg)
 				ret = imx565_set_roi_format(priv, &data.roi);
 			}
 			break;
+		case CAM_SET_GAIN:
+			{
+				ret = copy_from_user(&val, (s64 __user *)arg, sizeof(val));
+				vc_info(dev,"set CAM_SET_GAIN  %lld \n", val);
+				ret = imx565_sensor_set_gain(priv->s_data, val);
+			}
+			break;
+		case CAM_SET_BLACK_LEVEL:
+			{
+				ret = copy_from_user(&val, (s64 __user *)arg, sizeof(val));
+				vc_info(dev,"set CAM_SET_BLACK_LEVEL  %lld \n", val);
+				ret = imx565_sensor_set_black_level(priv->s_data, val);
+			}
+			break;
+		case CAM_SET_HFLIP:
+			{
+				ret = copy_from_user(&val, (s64 __user *)arg, sizeof(val));
+				vc_info(dev,"set CAM_SET_HFLIP  %lld \n", val);
+				ret = imx565_sensor_set_filp(priv->s_data, HORIZONTAL, val);
+			}
+			break;
+		case CAM_SET_VFLIP:
+			{
+				ret = copy_from_user(&val, (s64 __user *)arg, sizeof(val));
+				vc_info(dev,"set CAM_SET_VFLIP  %lld \n", val);
+				ret = imx565_sensor_set_filp(priv->s_data, VERTICAL, val);
+			}
+			break;
 		default:
 			break;
 	}
 	return ret;
 }
 
-static const struct v4l2_ctrl_ops imx565_ctrl_ops = {
-	.s_ctrl = imx565_s_ctrl,
-};
+// static const struct v4l2_ctrl_ops imx565_ctrl_ops = {
+// 	.s_ctrl = imx565_s_ctrl,
+// };
 
-static int sensor_debug_pic_set(struct camera_common_data *s_data, uint8_t mode)
-{
-	imx_write_reg(s_data, SENSOR_IMX_STANDBY, 0x01);
-	usleep_range(150, 160); // 延时150微秒
-	usleep_range(150, 160); // 延时150微秒
-	imx_write_reg(s_data, SENSOR_IMX_XMSTA, 1);
-	imx_write_reg(s_data, 0x3520, 0x1F);
-	imx_write_reg(s_data, 0x3540, 0x00);
-	if (0 == mode)
-	{
-		imx_write_reg(s_data, 0x3550, 0x02);
-	}
-	else if (1 == mode)
-	{
-		imx_write_reg(s_data, 0x3550, 0x05);
-		imx_write_reg(s_data, 0x3551, 0x07); // mode
-	}
-	else if (2 == mode)
-	{
-		imx_write_reg(s_data, 0x3550, 0x05);
-		imx_write_reg(s_data, 0x3551, 0x08); // mode
-	}
-	else if(3 == mode)
-	{
-		imx_write_reg(s_data, 0x3550, 0x05);
-		imx_write_reg(s_data, 0x3551, 0x03); // mode
-		imx_write_reg(s_data, 0x3559, 0x01); // PGVPSTEP
-	}
-	imx_write_reg(s_data, 0x355C, 0x00);		   // PGDATA1
-	imx_write_reg(s_data, 0x355D, 0x00 & 0x0f); // PGDATA1
-	imx_write_reg(s_data, 0x355E, 0xff);		   // PGDATA1
-	imx_write_reg(s_data, 0x355F, 0x00 & 0x0f); // PGDATA1
-	imx_write_reg(s_data, 0x3560, 0x0B);
-	imx_write_reg(s_data, 0x3562, 0x00);
-	imx_write_reg(s_data, 0x35B4, 0x00);
-	imx_write_reg(s_data, 0x35B5, 0x00);
-	imx_write_reg(s_data, SENSOR_IMX_STANDBY, 0);
-	usleep_range(1138, 1148); // 延时1138微秒
-	imx_write_reg(s_data, SENSOR_IMX_XMSTA, 0);
-	return 0;
-}
-static int imx565_sensor_set_readout_mode(struct camera_common_data *s_data, __u8 val)
-{
-	struct nv_sony_senor *priv = (struct nv_sony_senor *)s_data->priv;
-	struct device *dev = s_data->dev;
-	__u8 vint = 0;
-	u32 shs = 0; //根据快门时间计算
-	__u8 mode = 0;
-	int err = 0;
+// static int sensor_debug_pic_set(struct camera_common_data *s_data, uint8_t mode)
+// {
+// 	imx_write_reg(s_data, SENSOR_IMX_STANDBY, 0x01);
+// 	usleep_range(150, 160); // 延时150微秒
+// 	usleep_range(150, 160); // 延时150微秒
+// 	imx_write_reg(s_data, SENSOR_IMX_XMSTA, 1);
+// 	imx_write_reg(s_data, 0x3520, 0x1F);
+// 	imx_write_reg(s_data, 0x3540, 0x00);
+// 	if (0 == mode)
+// 	{
+// 		imx_write_reg(s_data, 0x3550, 0x02);
+// 	}
+// 	else if (1 == mode)
+// 	{
+// 		imx_write_reg(s_data, 0x3550, 0x05);
+// 		imx_write_reg(s_data, 0x3551, 0x07); // mode
+// 	}
+// 	else if (2 == mode)
+// 	{
+// 		imx_write_reg(s_data, 0x3550, 0x05);
+// 		imx_write_reg(s_data, 0x3551, 0x08); // mode
+// 	}
+// 	else if(3 == mode)
+// 	{
+// 		imx_write_reg(s_data, 0x3550, 0x05);
+// 		imx_write_reg(s_data, 0x3551, 0x03); // mode
+// 		imx_write_reg(s_data, 0x3559, 0x01); // PGVPSTEP
+// 	}
+// 	imx_write_reg(s_data, 0x355C, 0x00);		   // PGDATA1
+// 	imx_write_reg(s_data, 0x355D, 0x00 & 0x0f); // PGDATA1
+// 	imx_write_reg(s_data, 0x355E, 0xff);		   // PGDATA1
+// 	imx_write_reg(s_data, 0x355F, 0x00 & 0x0f); // PGDATA1
+// 	imx_write_reg(s_data, 0x3560, 0x0B);
+// 	imx_write_reg(s_data, 0x3562, 0x00);
+// 	imx_write_reg(s_data, 0x35B4, 0x00);
+// 	imx_write_reg(s_data, 0x35B5, 0x00);
+// 	imx_write_reg(s_data, SENSOR_IMX_STANDBY, 0);
+// 	usleep_range(1138, 1148); // 延时1138微秒
+// 	imx_write_reg(s_data, SENSOR_IMX_XMSTA, 0);
+// 	return 0;
+// }
+// static int imx565_sensor_set_readout_mode(struct camera_common_data *s_data, __u8 val)
+// {
+// 	struct nv_sony_sensor *priv = (struct nv_sony_sensor *)s_data->priv;
+// 	struct device *dev = s_data->dev;
+// 	__u8 vint = 0;
+// 	u32 shs = 0; //根据快门时间计算
+// 	__u8 mode = 0;
+// 	int err = 0;
 	
-	priv->sensorMode = val; //更新状态参数
-	imx_write_reg(s_data, SENSOR_IMX_STANDBY, 1);
-	usleep_range(150, 160);//延时150微秒
-	usleep_range(150, 160);//延时150微秒
-	imx_write_reg(s_data, SENSOR_IMX_XMSTA, 1);
+// 	priv->sensorMode = val; //更新状态参数
+// 	imx_write_reg(s_data, SENSOR_IMX_STANDBY, 1);
+// 	usleep_range(150, 160);//延时150微秒
+// 	usleep_range(150, 160);//延时150微秒
+// 	imx_write_reg(s_data, SENSOR_IMX_XMSTA, 1);
 	
-	if(NORMAL_MODE == val) //配置normal模式
-	{
-		mode = 0x00; 
-		imx_write_reg(s_data, SENSOR_IMX_TRIG, mode);
-		//配置vmax参数
-		imx_write_reg(s_data, SENSOR_IMX_VMAX_0, priv->vmax & 0xff);
-		imx_write_reg(s_data, SENSOR_IMX_VMAX_1, (priv->vmax>>8) & 0xff);
-		imx_write_reg(s_data, SENSOR_IMX_VMAX_2, (priv->vmax>>16) & 0xff);
+// 	if(NORMAL_MODE == val) //配置normal模式
+// 	{
+// 		mode = 0x00; 
+// 		imx_write_reg(s_data, SENSOR_IMX_TRIG, mode);
+// 		//配置vmax参数
+// 		imx_write_reg(s_data, SENSOR_IMX_VMAX_0, priv->vmax & 0xff);
+// 		imx_write_reg(s_data, SENSOR_IMX_VMAX_1, (priv->vmax>>8) & 0xff);
+// 		imx_write_reg(s_data, SENSOR_IMX_VMAX_2, (priv->vmax>>16) & 0xff);
 
-		imx_write_reg(s_data, SENSOR_IMX_GMRWT, priv->gmrwt);
-		imx_write_reg(s_data, SENSOR_IMX_GMTWT, priv->gmtwt);
-		imx_write_reg(s_data, SENSOR_IMX_GSDLY, priv->gsdly);
+// 		imx_write_reg(s_data, SENSOR_IMX_GMRWT, priv->gmrwt);
+// 		imx_write_reg(s_data, SENSOR_IMX_GMTWT, priv->gmtwt);
+// 		imx_write_reg(s_data, SENSOR_IMX_GSDLY, priv->gsdly);
 
-		imx_read_reg(s_data, SENSOR_IMX_VINT, &vint);
-		vint = usr_set_bit(vint, 1, 1); //配置第1位为1
-		imx_write_reg(s_data, SENSOR_IMX_VINT, vint);
+// 		imx_read_reg(s_data, SENSOR_IMX_VINT, &vint);
+// 		vint = usr_set_bit(vint, 1, 1); //配置第1位为1
+// 		imx_write_reg(s_data, SENSOR_IMX_VINT, vint);
 
-		//需要计算
-		shs = ((((100000 - 3)*1000)/priv->period) - priv->vmax);
-		imx_write_reg(s_data, SENSOR_IMX_SHS_0, shs & 0xff);
-		imx_write_reg(s_data, SENSOR_IMX_SHS_1, (shs>>8) & 0xff);
-		imx_write_reg(s_data, SENSOR_IMX_SHS_2, (shs>>16) & 0xff);
-	}
-	else if (FAST_TRIGGER_MODE == val) // 配置fast模式
-	{
-		mode = 0x02;
-		mode = (mode << 3) | (0x01);
-		imx_write_reg(s_data, SENSOR_IMX_TRIG, mode);
-	}
-	else if(SEQUENTIAL_TRIGGER_MODE == val) //配置Sequential Trigger Mode模式
-	{
-		err = imx_write_reg(s_data, SENSOR_IMX_VINT, 0x5B);//V interrupt is disable
-		if (err) {
-			dev_err(dev, "Failed to disable V interrupt\n");
-			return err;
-		}
-		mode = 0x01;
-		mode = (mode << 3) | (0x01);
-		err = imx_write_reg(s_data, SENSOR_IMX_TRIG, mode);		
-		//开启pwm的参数配置，计算行周期时间，配置pwm管脚输出
-		if (err) {
-			dev_err(dev, "Failed to enable pwm config\n");
-			return err;
-		}
-		// err = imx565_sensor_update_xhs_pwm(priv);
-	}
-	err = imx_write_reg(s_data, SENSOR_IMX_STANDBY, 0);
-	usleep_range(1138, 1148);//延时1138微秒
-	imx_write_reg(s_data, SENSOR_IMX_XMSTA, 0);
-	imx_write_reg(s_data, SENSOR_IMX_TOUT0SEL, SENSOR_TOUT0_ENABLE); //配置out0输出
-	//丢弃前8帧，目前延时等待
-	if(NORMAL_MODE == val) //配置normal模式
-	{
-		usleep_range(1138, 1148);//延时1138微秒
-		usleep_range(1138, 1148);//延时1138微秒
-	}
-	return err;
-}
+// 		//需要计算
+// 		shs = ((((100000 - 3)*1000)/priv->period) - priv->vmax);
+// 		imx_write_reg(s_data, SENSOR_IMX_SHS_0, shs & 0xff);
+// 		imx_write_reg(s_data, SENSOR_IMX_SHS_1, (shs>>8) & 0xff);
+// 		imx_write_reg(s_data, SENSOR_IMX_SHS_2, (shs>>16) & 0xff);
+// 	}
+// 	else if (FAST_TRIGGER_MODE == val) // 配置fast模式
+// 	{
+// 		mode = 0x02;
+// 		mode = (mode << 3) | (0x01);
+// 		imx_write_reg(s_data, SENSOR_IMX_TRIG, mode);
+// 	}
+// 	else if(SEQUENTIAL_TRIGGER_MODE == val) //配置Sequential Trigger Mode模式
+// 	{
+// 		err = imx_write_reg(s_data, SENSOR_IMX_VINT, 0x5B);//V interrupt is disable
+// 		if (err) {
+// 			dev_err(dev, "Failed to disable V interrupt\n");
+// 			return err;
+// 		}
+// 		mode = 0x01;
+// 		mode = (mode << 3) | (0x01);
+// 		err = imx_write_reg(s_data, SENSOR_IMX_TRIG, mode);		
+// 		//开启pwm的参数配置，计算行周期时间，配置pwm管脚输出
+// 		if (err) {
+// 			dev_err(dev, "Failed to enable pwm config\n");
+// 			return err;
+// 		}
+// 		// err = imx565_sensor_update_xhs_pwm(priv);
+// 	}
+// 	err = imx_write_reg(s_data, SENSOR_IMX_STANDBY, 0);
+// 	usleep_range(1138, 1148);//延时1138微秒
+// 	imx_write_reg(s_data, SENSOR_IMX_XMSTA, 0);
+// 	imx_write_reg(s_data, SENSOR_IMX_TOUT0SEL, SENSOR_TOUT0_ENABLE); //配置out0输出
+// 	//丢弃前8帧，目前延时等待
+// 	if(NORMAL_MODE == val) //配置normal模式
+// 	{
+// 		usleep_range(1138, 1148);//延时1138微秒
+// 		usleep_range(1138, 1148);//延时1138微秒
+// 	}
+// 	return err;
+// }
 static int imx565_sensor_set_black_level(struct camera_common_data *s_data, s64 val)
 {
 	int err = 0;
@@ -782,76 +816,62 @@ static int imx565_sensor_set_filp(struct camera_common_data *s_data, FILP_TYPE t
 		dev_err(dev, "%s: flip control error\n", __func__);
 	return err;
 }
-static int imx565_s_ctrl(struct v4l2_ctrl *ctrl)
+// static int imx565_s_ctrl(struct v4l2_ctrl *ctrl)
+// {
+// 	struct nv_sony_sensor *priv = container_of(ctrl->handler, struct nv_sony_sensor, ctrl_handler);
+// 	struct camera_common_data	*s_data = priv->s_data;
+// 	int err = 0;
+// 	switch (ctrl->id) {
+// 		case V4L2_CID_CONTRAST:
+// 			err = sensor_debug_pic_set(s_data, ctrl->val);
+// 			break;
+// 		case V4L2_CID_TEST_PATTERN:
+// 			vc_info(s_data->dev,"CID Scene mode set to %s (%d)\n", scene_mode_menu[ctrl->val], ctrl->val);
+// 			err = imx565_sensor_set_readout_mode(s_data, ctrl->val); //配置输出模式
+// 			break;
+// 		case V4L2_CID_BLACK_LEVEL: //黑电平参数
+// 			vc_info(s_data->dev,"CID V4L2_CID_BLACK_LEVEL  %d \n", ctrl->val);
+// 			err = imx565_sensor_set_black_level(s_data, ctrl->val);
+// 			break;
+// 		case V4L2_CID_GAIN: //增益参数
+// 			vc_info(s_data->dev,"CID V4L2_CID_GAIN %d \n", ctrl->val);
+// 			err = imx565_sensor_set_gain(s_data, ctrl->val);
+// 			break;
+// 		case V4L2_CID_HFLIP: //水平翻转
+// 			vc_info(s_data->dev,"CID V4L2_CID_HFLIP %d \n", ctrl->val);
+// 			err = imx565_sensor_set_filp(s_data, HORIZONTAL, ctrl->val);
+// 			break;
+// 		case V4L2_CID_VFLIP: //垂直翻转
+// 			vc_info(s_data->dev,"CID V4L2_CID_VFLIP %d \n", ctrl->val);
+// 			err = imx565_sensor_set_filp(s_data, VERTICAL, ctrl->val);
+// 			break;
+// 		default:
+// 			break;
+// 	};
+// 	return err;
+// }
+// static const char * const scene_mode_menu[] = {
+// 	"NormalMode",
+// 	"FastTriggerMode",
+// 	"SequentialTriggerMode",
+// };
+
+static int imx565_set_group_hold(struct tegracam_device *tc_dev, bool val)
 {
-	struct nv_sony_senor *priv = container_of(ctrl->handler, struct nv_sony_senor, ctrl_handler);
-	struct camera_common_data	*s_data = priv->s_data;
-	int err = 0;
-	switch (ctrl->id) {
-		case V4L2_CID_CONTRAST:
-			err = sensor_debug_pic_set(s_data, ctrl->val);
-			break;
-		case V4L2_CID_TEST_PATTERN:
-			vc_info(s_data->dev,"CID Scene mode set to %s (%d)\n", scene_mode_menu[ctrl->val], ctrl->val);
-			err = imx565_sensor_set_readout_mode(s_data, ctrl->val); //配置输出模式
-			break;
-		case V4L2_CID_BLACK_LEVEL: //黑电平参数
-			vc_info(s_data->dev,"CID V4L2_CID_BLACK_LEVEL  %d \n", ctrl->val);
-			err = imx565_sensor_set_black_level(s_data, ctrl->val);
-			break;
-		case V4L2_CID_GAIN: //增益参数
-			vc_info(s_data->dev,"CID V4L2_CID_GAIN %d \n", ctrl->val);
-			err = imx565_sensor_set_gain(s_data, ctrl->val);
-			break;
-		case V4L2_CID_HFLIP: //水平翻转
-			vc_info(s_data->dev,"CID V4L2_CID_HFLIP %d \n", ctrl->val);
-			err = imx565_sensor_set_filp(s_data, HORIZONTAL, ctrl->val);
-			break;
-		case V4L2_CID_VFLIP: //垂直翻转
-			vc_info(s_data->dev,"CID V4L2_CID_VFLIP %d \n", ctrl->val);
-			err = imx565_sensor_set_filp(s_data, VERTICAL, ctrl->val);
-			break;
-		default:
-			break;
-	};
-	return err;
-}
-static const char * const scene_mode_menu[] = {
-	"NormalMode",
-	"FastTriggerMode",
-	"SequentialTriggerMode",
-};
-static int imx565_ctrls_init(struct nv_sony_senor *priv)
-{
-	int err = 0;
-	struct device *dev = priv->s_data->dev;
-	int real_num_ctrls = 8;
-	v4l2_ctrl_handler_init(&priv->ctrl_handler, real_num_ctrls);
-	priv->sensor_mode = v4l2_ctrl_new_std_menu_items(&priv->ctrl_handler, &imx565_ctrl_ops, V4L2_CID_TEST_PATTERN,
-													  ARRAY_SIZE(scene_mode_menu) - 1, 0, priv->sensorMode, scene_mode_menu); // 1: default
-	priv->black = v4l2_ctrl_new_std(&priv->ctrl_handler, &imx565_ctrl_ops, V4L2_CID_BLACK_LEVEL, 0, 2048, 1, SENSOR_DEFAULT_BLACK_VALUE);
-	priv->gain = v4l2_ctrl_new_std(&priv->ctrl_handler, &imx565_ctrl_ops, V4L2_CID_GAIN, 0, 48, 1, 0);//默认值为0
-	priv->hflip = v4l2_ctrl_new_std(&priv->ctrl_handler, &imx565_ctrl_ops, V4L2_CID_HFLIP, 0, 1, 1, 0);
-	priv->vflip = v4l2_ctrl_new_std(&priv->ctrl_handler, &imx565_ctrl_ops, V4L2_CID_VFLIP, 0, 1, 1, 0);
-	priv->test  = v4l2_ctrl_new_std(&priv->ctrl_handler, &imx565_ctrl_ops, V4L2_CID_CONTRAST, 0, 3, 1, 0); //默认不开启
-	priv->numctrls = 0;
-	priv->s_data->numctrls = 0;
-	priv->s_data->ctrls = NULL;
-	err = v4l2_ctrl_handler_setup(&priv->ctrl_handler);
-	if (err) {
-		dev_err(dev, "Error %d in control hdl setup\n", err);
-		goto error;
+	int err;
+	struct nv_sony_sensor *priv = (struct nv_sony_sensor *)tegracam_get_privdata(tc_dev);
+	struct camera_common_data *s_data = priv->s_data;
+	if(val)
+	{
+		err = imx_write_reg(s_data, SENSOR_IMX_REGHOLD, 1);
 	}
-	err = priv->ctrl_handler.error;
-	if (err) {
-		dev_err(dev, "Error %d adding controls\n", err);
-		goto error;
+	else
+	{
+		err = imx_write_reg(s_data, SENSOR_IMX_REGHOLD, 0);
 	}
 	return 0;
-error:
-	v4l2_ctrl_handler_free(&priv->ctrl_handler);
-	return err;
 }
+
 
 // CSI-2 ，4line模式下，INCK = 74.25MHz
 static const SETTING_PARAM imx565SetParm[] =
@@ -948,5 +968,6 @@ const struct nv_sensor_model_info imx565_i2c_info = {
 	.sensor_fmt_get = &sensor_get_fmt,
 	.sensor_set_selection = sensor_set_selection,
 	.sensor_get_selection = sensor_get_selection,
-	.sensor_ctrls_init    = imx565_ctrls_init,
+	.sensor_set_group_hold = imx565_set_group_hold,
+	.board_off_power = NULL,
 };

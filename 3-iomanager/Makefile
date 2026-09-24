@@ -26,12 +26,10 @@ PWD:= $(shell pwd)
 
 all : generate_header
 	make ARCH=arm64 CROSS_COMPILE=$(CROSS_COMPILER) -C $(KERNEL_DIR) M=$(PWD) modules
-	@if ping -c 1 -W 1 $(TARGET_IP) >/dev/null 2>&1; then \
-		echo "Network reachable, uploading $(MODULE_NAME).ko"; \
-		sshpass -p '$(PASSWORD)' scp ./$(MODULE_NAME).ko $(USR)@$(TARGET_IP):/home/$(USR)/nfs; \
-	else \
-		echo "Network unreachable, skip upload"; \
-	fi
+	$(call CHECK_AND_UPLOAD,./$(MODULE_NAME).ko);
+
+mk:
+	$(call CHECK_AND_UPLOAD,./mk.sh);
 
 generate_header:compile_info.sh
 	rm -f version.h

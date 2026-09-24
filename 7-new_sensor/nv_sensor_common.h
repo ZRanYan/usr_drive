@@ -9,29 +9,10 @@
 #include <linux/gpio/consumer.h>
 #include <linux/debugfs.h>
 #include <linux/uaccess.h>
-#include "version.h"
+#include "z_gmsl-link.h"
+#include "usr_debug.h"
 
-// #define USR_DEBUG_ENABLE 
-
-#define FILE_NAME(str) strrchr(str, '/') ? strrchr(str, '/') + 1 : str
-
-#ifdef USR_DEBUG_ENABLE
-    #define vc_info(dev, fmt, ...) \
-        dev_info(dev, "[%s:%d %s]:" fmt, FILE_NAME(__FILE__), __LINE__, __func__, ##__VA_ARGS__)
-   #define vc_notice(dev, fmt, ...) \
-        dev_notice(dev, "[%s:%d %s]:" fmt, FILE_NAME(__FILE__), __LINE__, __func__, ##__VA_ARGS__) //用作打印初始化sensor列表
-    #define vc_warn(dev, fmt, ...) \
-        dev_warn(dev, "[%s:%d %s]:" fmt, FILE_NAME(__FILE__), __LINE__, __func__, ##__VA_ARGS__)
-    #define vc_err(dev, fmt, ...) \
-        dev_err(dev, "[%s:%d %s]:" fmt, FILE_NAME(__FILE__), __LINE__, __func__, ##__VA_ARGS__)
-#else
-    #define vc_info(dev, fmt, ...)  
-    #define vc_notice(dev, fmt, ...) 
-    #define vc_warn(dev, fmt, ...)  
-    #define vc_err(dev, fmt, ...)  
-#endif
-
-#define BL_NV_IMX_SENSOR_VER "V0.3.0"
+#define BL_NV_IMX_SENSOR_VER "V0.4.1"
 
 #define BL_NV_SENSOR_FULL_VERSION \
     BL_NV_IMX_SENSOR_VER " (" GIT_COMMIT " on " GIT_BRANCH " " PROGRAM_DATE ")"
@@ -132,22 +113,33 @@
 //私有的sc535hgs的配置参数
 #define CAM_SET_EXPO_PERIOD_PARAM			(V4L2_CID_USER_BASE + 11)
 #define CAM_GET_SENSOR_TYPE					(V4L2_CID_USER_BASE + 12)
+#define CAM_SET_CUSTOM_TEST                 (V4L2_CID_USER_BASE + 13)
 
-struct nv_sony_senor;
+#define CAM_SET_SENSOR_POWER_STATUS			(V4L2_CID_USER_BASE + 14)
+
+struct nv_sony_sensor;
 
 typedef struct reg_8 SENSOR_REG_STRUCT;
+typedef enum
+{
+	SEQUENTIAL_TRIGGER_MODE = 0,
+	NORMAL_MODE = 1,
+	FAST_TRIGGER_MODE = 2,
+} MODE_TYPE;
 
-typedef void (*nv_sensor_dtb_init_fun)(struct nv_sony_senor *);
-typedef int (*nv_sensor_board_setup_fun)(struct nv_sony_senor *);
-typedef void (*nv_sensor_param_set_fun)(struct nv_sony_senor *,int);
-typedef void (*nv_sensor_usr_read_id_fun)(struct nv_sony_senor *);
-typedef int (*nv_sensor_ioctl_fun)(struct nv_sony_senor*, unsigned int, void *);
-typedef int (*nv_sensor_stream_set_fun)(struct nv_sony_senor *, int);
-typedef int (*nv_sesnor_set_fmt_fun)(struct nv_sony_senor *, struct v4l2_subdev *, struct v4l2_subdev_format *);
-typedef int (*nv_sesnor_get_fmt_fun)(struct nv_sony_senor *, struct v4l2_subdev *, struct v4l2_subdev_format *);
-typedef int (*nv_sensor_set_selection)(struct nv_sony_senor *, struct v4l2_subdev_state *, struct v4l2_subdev_selection *);
-typedef int (*nv_sensor_get_selection)(struct nv_sony_senor *, struct v4l2_subdev_state *, struct v4l2_subdev_selection *);
-typedef int (*nv_sensor_ctrls_init_fun)(struct nv_sony_senor *);
+
+typedef int (*nv_sensor_dtb_init_fun)(struct nv_sony_sensor *);
+typedef int (*nv_sensor_board_setup_fun)(struct nv_sony_sensor *, MODE_TYPE);
+typedef void (*nv_sensor_param_set_fun)(struct nv_sony_sensor *,int);
+typedef void (*nv_sensor_usr_read_id_fun)(struct nv_sony_sensor *);
+typedef int (*nv_sensor_ioctl_fun)(struct nv_sony_sensor*, unsigned int, void *);
+typedef int (*nv_sensor_stream_set_fun)(struct nv_sony_sensor *, int);
+typedef int (*nv_sesnor_set_fmt_fun)(struct nv_sony_sensor *, struct v4l2_subdev *, struct v4l2_subdev_format *);
+typedef int (*nv_sesnor_get_fmt_fun)(struct nv_sony_sensor *, struct v4l2_subdev *, struct v4l2_subdev_format *);
+typedef int (*nv_sensor_set_selection)(struct nv_sony_sensor *, struct v4l2_subdev_state *, struct v4l2_subdev_selection *);
+typedef int (*nv_sensor_get_selection)(struct nv_sony_sensor *, struct v4l2_subdev_state *, struct v4l2_subdev_selection *);
+typedef int (*nv_sensor_set_group_hold)(struct tegracam_device *tc_dev, bool val);
+typedef int (*nv_sensor_board_power_off)(struct nv_sony_sensor *);
 
 typedef enum
 {
@@ -157,10 +149,14 @@ typedef enum
 
 typedef enum
 {
-	IMX565 = 0,
-	IMX566 = 1,
+	IMX566 = 0,
+	IMX565 = 1,
 	SC535HGS = 2,
-	GMAX3405 = 3
+	GMAX3405 = 3,
+	OG02C1B = 4,
+	OV5640 = 5,
+	OG05B2B = 6,
+	GMAX3412 = 7,
 } SENSOR_TYPE_ENUM;
 
 typedef struct{
@@ -217,11 +213,12 @@ typedef struct
 	__u32 vmax;
 }SETTING_PARAM;
 
-typedef enum{
-	NORMAL_MODE = 0,
-	FAST_TRIGGER_MODE = 1,
-	SEQUENTIAL_TRIGGER_MODE = 2,
-}MODE_TYPE;
+typedef struct 
+{
+    char str[20];
+    u16  addr;
+    char bitfield[20]; // 补充的 BITFIELD 字符串字段
+} ERROR_REG_SET;
 
 typedef struct 
 {
@@ -261,10 +258,11 @@ struct nv_sensor_model_info {
 	nv_sesnor_get_fmt_fun sensor_fmt_get;
 	nv_sensor_set_selection sensor_set_selection;
 	nv_sensor_get_selection sensor_get_selection;
-	nv_sensor_ctrls_init_fun sensor_ctrls_init;
+	nv_sensor_set_group_hold sensor_set_group_hold; //必须实现
+	nv_sensor_board_power_off board_off_power; //sensor板子关电
 };
 
-struct nv_sony_senor
+struct nv_sony_sensor
 {
 	struct i2c_client *i2c_client;
 	struct v4l2_subdev *subdev;
@@ -273,6 +271,7 @@ struct nv_sony_senor
 	s64 last_wdr_et_val;
 	struct camera_common_data *s_data;
 	struct tegracam_device *tc_dev;
+	//下面自定的地方
 	const struct nv_sensor_model_info *model_info; //绑定每个sensor型号的配置信息
 	struct v4l2_ctrl_handler ctrl_handler;
 	struct media_pad pad;
@@ -280,35 +279,49 @@ struct nv_sony_senor
 	bool is_streaming;
 
 	//sony的主要配置接口
-	struct gpio_desc *pwdn_gpio;	// 时钟上电管脚
+	struct gpio_desc *pwdn_gpio;	// 外部硬件上电管脚
 	struct gpio_desc *xclr_gpio;	// xclr
-	struct gpio_desc *pwgd_gpio;	// power good
+	struct gpio_desc *pwgd_gpio;	// power good,获取电源的输出状态
 	struct gpio_desc *inck_gpio;	// inck enable
 	struct gpio_desc *xmaster_gpio; // xmaster
 	struct pwm_device *pwm_xhs;
 	//思特微主要的配置接口
-	struct gpio_desc *reset_gpio;	// 用于sensor上电
+	struct gpio_desc *reset_gpio;	// 用于sensor上电，也复用gamx3405的SYS_RST_N
 	struct gpio_desc *pwdnb_gpio; 	//用于sensor的上电
 	struct gpio_desc *fsync_gpio;	//用于sensor的触发出图
+	//长光辰芯主要的配置
+	struct gpio_desc *clk_gpio;	//用于外部40MHz的晶振使能
+	//gmsl相关的配置
+	struct gmsl_link_ctx    g_ctx;
+	struct device		*dser_dev;
+	u32 def_addr;
+	u32 act_addr;
+	u32 des_link;
+	u8 eeprom[128];
+	u32 awb[3];
 
 	struct pwm_state pwm_state;
+	__u32 input_freq; //输入时钟参数
 	__u32 x; // roi参数
 	__u32 y;
 	__u32 height; // 图像的高度
 	__u32 width;
 	__u8 sensorMode; // 0-normal,1-fastTrigger, 2-sequentialTrigger
-	__u32 vmax;		 // 有效的像素行数
+	__u32 vmax;		 // 有效的像素行数,复用gmax3405的w_sum参数
 	__u32 hmax;		 // 每行数据的时钟数，跟bit，和line的速率有关系
 	__u8 gmrwt;		 // 全局内存读取等待时间
 	__u8 gmtwt;		 // 全局内存等待时间
 	__u8 gsdly;		 // 全局快门延迟时间
 	__u32 period;	 // 行周期时间
+	__u32 expoValue; //曝光时间，单位微秒
 	__u8 bit;		 // 0-8bit,1-10bit,2-12bit
 	__u16 fps;		 // 帧率，(frame/s)
 	__u8 binning; //暂存的binning or subsampling的状态
 	bool vflip_status; //暂存的上下翻转的状态
+	MODE_TYPE modeType;	//sensor的模式，决定sensor的外部io触发还是自由出流
 
 	struct dentry *debugfs_dir; //调试节点
+	struct proc_dir_entry *proc_dir;//proc的调试节点
 	int numctrls;
 	struct v4l2_ctrl *expo;		   // 曝光时间
 	struct v4l2_ctrl *pulse_set;   // 输出io口配置，TOUT0 pin，TOUT1 pin，TOUT2 pin
@@ -323,7 +336,5 @@ struct nv_sony_senor
 	struct v4l2_ctrl *sensor_binning_2x_set; // sensor的binning or subsampling设置
 	struct v4l2_ctrl *ctrls[];
 };
-
-
 
 #endif

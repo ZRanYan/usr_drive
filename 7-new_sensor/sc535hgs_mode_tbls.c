@@ -11,7 +11,7 @@
 static const struct regmap_config sc535_regmap_config = {
 	.reg_bits = 16,
 	.val_bits = 8,
-	.cache_type = REGCACHE_RBTREE,
+	.cache_type = REGCACHE_NONE,
 	.use_single_read = true,
 	.use_single_write = true,
 };
@@ -51,7 +51,7 @@ static struct camera_common_sensor_ops sc535_common_ops = {
  * 
  * @param priv 
  */
-static void sc535_dtb_init(struct nv_sony_senor *priv)
+static int sc535_dtb_init(struct nv_sony_sensor *priv)
 {
     struct device *dev = &priv->i2c_client->dev;
     priv->pwdn_gpio =  devm_gpiod_get(dev, "pwren", GPIOD_OUT_LOW);
@@ -74,13 +74,14 @@ static void sc535_dtb_init(struct nv_sony_senor *priv)
     //     	dev_err(dev, "Failed to get fsync_gpio\n");
     //     	goto error;
     // }
+	return 0;
 error:
-	return;
+	return -1;
 }
 
 static int sensor_power_on_set(struct camera_common_data *s_data)
 {
-	struct nv_sony_senor *priv = (struct nv_sony_senor *)s_data->priv;
+	struct nv_sony_sensor *priv = (struct nv_sony_sensor *)s_data->priv;
 	struct camera_common_power_rail *pw = s_data->power;
 	// gpiod_set_value(priv->fsync_gpio, 0); //触发信号是上升沿触发
     gpiod_set_value(priv->pwdn_gpio, 0);
@@ -98,7 +99,7 @@ static int sensor_power_on_set(struct camera_common_data *s_data)
 }
 static int sensor_power_off_set(struct camera_common_data *s_data)
 {
-	struct nv_sony_senor *priv = (struct nv_sony_senor *)s_data->priv;
+	struct nv_sony_sensor *priv = (struct nv_sony_sensor *)s_data->priv;
 	struct camera_common_power_rail *pw = s_data->power;
 	gpiod_set_value(priv->pwdnb_gpio, 0);
 	usleep_range(500, 510);
@@ -108,7 +109,7 @@ static int sensor_power_off_set(struct camera_common_data *s_data)
 	pw->state = SWITCH_OFF;
 	return 0;
 }
-static int sc535_board_setup(struct nv_sony_senor *priv)
+static int sc535_board_setup(struct nv_sony_sensor *priv, MODE_TYPE mode)
 {
 	struct camera_common_data *s_data = priv->s_data;
     struct device *dev = s_data->dev;
@@ -463,12 +464,12 @@ static SENSOR_REG_STRUCT *mode_table[] = {
 	[SC535_MODE_12BIT] = NULL,
 };
 
-static void sc535_init_param(struct nv_sony_senor *priv, int workMode)
+static void sc535_init_param(struct nv_sony_sensor *priv, int modeType)
 {
 	struct camera_common_data *s_data = priv->s_data;
-	sensor_write_table(s_data, mode_table[workMode]);
+	sensor_write_table(s_data, mode_table[modeType]);
 }
-void sc535_read_id_type(struct nv_sony_senor *priv)
+void sc535_read_id_type(struct nv_sony_sensor *priv)
 {
     int err = 0;
 	u8 reg_16 = 0;
@@ -486,7 +487,7 @@ void sc535_read_id_type(struct nv_sony_senor *priv)
     }
 	return;
 }
-static int sc535hgs_get_temp(struct nv_sony_senor *priv)
+static int sc535hgs_get_temp(struct nv_sony_sensor *priv)
 {
 	int err = 0;
 	u8 reg_val = 0;
@@ -546,7 +547,7 @@ static void sc535hgs_set_expo_period(struct camera_common_data *s_data, SENSOR_E
 	return;
 }
 
-int sc535_ioctl_set(struct nv_sony_senor *priv, unsigned int cmd, void *arg)
+int sc535_ioctl_set(struct nv_sony_sensor *priv, unsigned int cmd, void *arg)
 {
     union sensor_ioctl_data data;
 #ifdef USR_DEBUG_ENABLE
@@ -604,7 +605,7 @@ int sc535_ioctl_set(struct nv_sony_senor *priv, unsigned int cmd, void *arg)
 static int sc535_s_ctrl(struct v4l2_ctrl *ctrl)
 {
 // #ifdef USR_DEBUG_ENABLE
-// 	struct nv_sony_senor *priv = container_of(ctrl->handler, struct nv_sony_senor, ctrl_handler);
+// 	struct nv_sony_sensor *priv = container_of(ctrl->handler, struct nv_sony_sensor, ctrl_handler);
 // 	struct camera_common_data	*s_data = priv->s_data;
 // #endif
 	int err = 0;
@@ -621,32 +622,6 @@ static int sc535_s_ctrl(struct v4l2_ctrl *ctrl)
 static const struct v4l2_ctrl_ops sc535_ctrl_ops = {
 	.s_ctrl = sc535_s_ctrl,
 };
-
-static int sc535_ctrls_init(struct nv_sony_senor *priv)
-{
-    int err = 0;
-	struct device *dev = priv->s_data->dev;
-	v4l2_ctrl_handler_init(&priv->ctrl_handler, 4);
-    priv->black = v4l2_ctrl_new_std(&priv->ctrl_handler, &sc535_ctrl_ops, V4L2_CID_BLACK_LEVEL, 0, 2048, 1, SENSOR_DEFAULT_BLACK_VALUE);
-	priv->gain = v4l2_ctrl_new_std(&priv->ctrl_handler, &sc535_ctrl_ops, V4L2_CID_GAIN, 0, 48, 1, 0);//默认值为0
-    priv->numctrls = 0;
-	priv->s_data->numctrls = 0;
-	priv->s_data->ctrls = NULL;
-	err = v4l2_ctrl_handler_setup(&priv->ctrl_handler);
-	if (err) {
-		dev_err(dev, "Error %d in control hdl setup\n", err);
-		goto error;
-	}
-	err = priv->ctrl_handler.error;
-	if (err) {
-		dev_err(dev, "Error %d adding controls\n", err);
-		goto error;
-	}
-	return 0;
-error:
-	v4l2_ctrl_handler_free(&priv->ctrl_handler);
-	return err;
-}
 
 const struct nv_sensor_model_info sc535_i2c_info = {
 	.usr_id = SC535HGS,
@@ -669,5 +644,5 @@ const struct nv_sensor_model_info sc535_i2c_info = {
 	.sensor_fmt_get = &sensor_get_fmt,
 	.sensor_set_selection = sensor_set_selection,
 	.sensor_get_selection = sensor_get_selection,
-	.sensor_ctrls_init    = sc535_ctrls_init,
+	.board_off_power = NULL,
 };

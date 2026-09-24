@@ -9,7 +9,6 @@
 #define SC_SC535_ID_H							0x3107
 #define SC_SC535_ID_L							0x3108
 
-
 extern const struct nv_sensor_model_info sc535_i2c_info;
 
 #endif

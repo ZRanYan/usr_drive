@@ -1,0 +1,928 @@
+#include "gmax3412_mode_tbls.h"
+#include "imx_sensor_common.h"
+#include "max96724.h"
+#include "gmsl_status.h"
+
+#define GMAX3412_WIDTH   4096
+#define GMAX3412_HEIGHT  3072
+
+#define GMAX3412_FULL_VERSION_EX \
+    "gmax3412 " BL_NV_SENSOR_FULL_VERSION
+
+static struct mutex serdes_lock__;
+
+static const struct regmap_config gmax3412_regmap_config = {
+	.reg_bits = 16,
+	.val_bits = 8,
+    .cache_type = REGCACHE_NONE,
+	.use_single_read = true,
+	.use_single_write = true,
+};
+enum {
+    GMAX3412_MODE_4096x3072_30FPS,
+    GMAX3412_START_STREAM,
+    GMAX3412_STOP_STREAM,
+};
+
+static struct reg_8 gmax3412_mode_12bit_2592x1944_30fps[] = {
+    {0x2E00, 0x00},
+    {0x2E01, 0x00},
+    {0x2E02, 0x00},
+    {0x2E03, 0x03},
+    {0x2E04, 0x00},
+    {0x2E05, 0x08},
+    {0x2E06, 0x00},
+    {0x2E07, 0x01},
+    {0x2E08, 0x00},
+    {0x2E09, 0x00},
+    {0x2E0A, 0x40},
+    {0x2E0B, 0x00},
+    {0x2E0C, 0x00},
+    {0x2E0D, 0x00},
+    {0x2E0E, 0x00},
+    {0x2E0F, 0x00},
+    {0x2E10, 0xFF},
+    {0x2E11, 0xFF},
+    {0x2E12, 0x0C},
+    {0x2E13, 0x0C},
+    {0x2E14, 0x01},
+    {0x2E15, 0x00},
+    {0x2E16, 0x00},
+    {0x2E17, 0x00},
+    {0x2E18, 0x00},
+    {0x2E19, 0x0C},
+    {0x2E1A, 0x0C},
+    {0x2E1B, 0x00},
+    {0x2E1C, 0x00},
+    {0x2E1D, 0x08},
+    {0x2E1E, 0x00},
+    {0x2E1F, 0x00},
+    {0x2E20, 0x0C},
+    {0x2E21, 0x00},
+    {0x2E22, 0x00},
+    {0x2E23, 0x00},
+    {0x2E24, 0x00},
+    {0x2E25, 0x00},
+    {0x2E26, 0x00},
+    {0x2E27, 0x00},
+    {0x2E28, 0x00},
+    {0x2E29, 0x00},
+    {0x2E2A, 0x00},
+    {0x2E2B, 0x00},
+    {0x2E2C, 0x00},
+    {0x2E2D, 0x00},
+    {0x2E2E, 0x00},
+    {0x2E2F, 0x00},
+    {0x2E30, 0x00},
+    {0x2E31, 0x00},
+    {0x2E32, 0x00},
+    {0x2E33, 0x00},
+    {0x2E34, 0x00},
+    {0x2E35, 0x00},
+    {0x2E36, 0x00},
+    {0x2E37, 0x00},
+    {0x2E38, 0x00},
+    {0x2E39, 0x00},
+    {0x2E3A, 0x00},
+    {0x2E3B, 0x00},
+    {0x2E3C, 0x00},
+    {0x2E3D, 0x05},
+    {0x2E3E, 0x06},
+    {0x2E3F, 0x00},
+    {0x2E40, 0x02},
+    {0x2E41, 0x03},
+    {0x2E42, 0x2A},
+    {0x2E43, 0x04},
+    {0x2E44, 0x04},
+    {0x2E45, 0x04},
+    {0x2E46, 0x04},
+    {0x2E47, 0x1E},
+    {0x2E48, 0x1E},
+    {0x2E49, 0x06},
+    {0x2E4A, 0x00},
+    {0x2E4B, 0x07},
+    {0x2E4C, 0x00},
+    {0x2E4D, 0xA4},
+    {0x2E4E, 0x84},
+    {0x2E4F, 0x62},
+    {0x2E50, 0x02},
+    {0x2E51, 0x50},
+    {0x2E52, 0x73},
+    {0x2E53, 0x05},
+    {0x2E54, 0x37},
+    {0x2E55, 0xFF},
+    {0x2E56, 0xFF},
+    {0x2E57, 0xFF},
+    {0x2E58, 0xFF},
+    {0x2E59, 0x85},
+    {0x2E5A, 0x94},
+    {0x2E5B, 0x19},
+    {0x2E5C, 0xFF},
+    {0x2E5D, 0xFF},
+    {0x2E5E, 0xFF},
+    {0x2E5F, 0x01},
+    {0x2E60, 0xFD},
+    {0x2E61, 0x01},
+    {0x2E62, 0xFE},
+    {0x2E63, 0xFF},
+    {0x2E64, 0xFF},
+    {0x2E65, 0x05},
+    {0x2E66, 0x3E},
+    {0x2E67, 0x2A},
+    {0x2E68, 0xFE},
+    {0x2E69, 0x05},
+    {0x2E6A, 0x7E},
+    {0x2E6B, 0xBE},
+    {0x2E6C, 0xFA},
+    {0x2E6D, 0x71},
+    {0x2E6E, 0x80},
+    {0x2E6F, 0xC2},
+    {0x2E70, 0xFC},
+    {0x2E71, 0x2A},
+    {0x2E72, 0xFF},
+    {0x2E73, 0xFF},
+    {0x2E74, 0xFF},
+    {0x2E75, 0x2B},
+    {0x2E76, 0xFF},
+    {0x2E77, 0xFF},
+    {0x2E78, 0xFF},
+    {0x2E79, 0x72},
+    {0x2E7A, 0x80},
+    {0x2E7B, 0xC3},
+    {0x2E7C, 0xFC},
+    {0x2E7D, 0x6F},
+    {0x2E7E, 0x70},
+    {0x2E7F, 0xC0},
+    {0x2E80, 0xC1},
+    {0x2E81, 0x72},
+    {0x2E82, 0x80},
+    {0x2E83, 0xC3},
+    {0x2E84, 0xFC},
+    {0x2E85, 0x7E},
+    {0x2E86, 0x80},
+    {0x2E87, 0xFA},
+    {0x2E88, 0xFC},
+    {0x2E89, 0x80},
+    {0x2E8A, 0x8A},
+    {0x2E8B, 0x84},
+    {0x2E8C, 0xFF},
+    {0x2E8D, 0xFF},
+    {0x2E8E, 0xFF},
+    {0x2E8F, 0xFF},
+    {0x2E90, 0xFF},
+    {0x2E91, 0x01},
+    {0x2E92, 0x02},
+    {0x2E93, 0xFF},
+    {0x2E94, 0xFF},
+    {0x2E95, 0xFF},
+    {0x2E96, 0xFF},
+    {0x2E97, 0xFF},
+    {0x2E98, 0xFF},
+    {0x2E99, 0xFF},
+    {0x2E9A, 0xFF},
+    {0x2E9B, 0x24},
+    {0x2E9C, 0x1C},
+    {0x2E9D, 0x1E},
+    {0x2E9E, 0x0C},
+    {0x2E9F, 0x03},
+    {0x2EA0, 0x00},
+    {0x2EA1, 0x01},
+    {0x2EA2, 0x00},
+    {0x2EA3, 0x01},
+    {0x2EA4, 0x03},
+    {0x2EA5, 0x01},
+    {0x2EA6, 0x01},
+    {0x2EA7, 0x00},
+    {0x2EA8, 0x01},
+    {0x2EA9, 0x1E},
+    {0x2EAA, 0x0C},
+    {0x2EAB, 0x00},
+    {0x2EAC, 0x00},
+    {0x2EAD, 0x01},
+    {0x2EAE, 0x12},
+    {0x2EAF, 0x00},
+    {0x2EB0, 0x00},
+    {0x2EB1, 0x00},
+    {0x2EB2, 0x00},
+    {0x2EB3, 0x00},
+    {0x2EB4, 0x00},
+    {0x2EB5, 0x00},
+    {0x2EB6, 0x00},
+    {0x2EB7, 0x00},
+    {0x2EB8, 0x00},
+    {0x2EB9, 0x05},
+    {0x2EBA, 0x00},
+    {0x2EBB, 0x00},
+    {0x3000, 0x01},
+    {0x3001, 0x02},
+    {0x3002, 0x02},
+    {0x3003, 0x00},
+    {0x3004, 0x03},
+    {0x3005, 0x00},
+    {0x3006, 0x00},
+    {0x3007, 0x00},
+    {0x3008, 0x00},
+    {0x3009, 0x08},
+    {0x300A, 0x00},
+    {0x300B, 0x01},
+    {0x300C, 0x01},
+    {0x300D, 0x0F},
+    {0x300E, 0x00},
+    {0x300F, 0x11},
+    {0x3010, 0x01},
+    {0x3011, 0x01},
+    {0x3012, 0x00},
+    {0x3013, 0x00},
+    {0x3014, 0x65},
+    {0x3015, 0x01},
+    {0x3016, 0x04},
+    {0x3017, 0x00},
+    {0x3018, 0x08},
+    {0x3019, 0x07},
+    {0x301A, 0x10},
+    {0x301B, 0x07},
+    {0x301C, 0x27},
+    {0x301D, 0x00},
+    {0x301E, 0x0B},
+    {0x301F, 0x09},
+    {0x3020, 0x05},
+    {0x3021, 0x06},
+    {0x3022, 0x96},
+    {0x3023, 0xF8},
+    {0x3024, 0x14},
+    {0x3025, 0x00},
+    {0x3026, 0x00},
+    {0x3027, 0x00},
+    {0x3028, 0x00},
+    {0x3029, 0x00},
+    {0x302A, 0x04},
+    {0x302B, 0x04},
+    {0x302C, 0x04},
+    {0x302D, 0x04},
+    {0x302E, 0x00},
+    {0x302F, 0x00},
+    {0x3030, 0x00},
+    {0x3031, 0x00},
+    {0x3032, 0x00},
+    {0x3033, 0x1F},
+    {0x3034, 0x1F},
+    {0x3035, 0x08},
+    {0x3036, 0x08},
+    {0x3037, 0x00},
+    {0x3038, 0x10},
+    {0x3200, 0x20},
+    {0x3201, 0x00},
+    {0x3202, 0x04},
+    {0x3203, 0x03},
+    {0x3204, 0x20},
+    {0x3205, 0x03},
+    {0x3206, 0x03},
+    {0x3207, 0x03},
+    {0x3208, 0x16},
+    {0x3209, 0x04},
+    {0x320A, 0x00},
+    {0x320B, 0x16},
+    {0x320C, 0x04},
+    {0x320D, 0x16},
+    {0x320E, 0x0F},
+    {0x320F, 0x00},
+    {0x3210, 0x11},
+    {0x3211, 0x07},
+    {0x3212, 0x00},
+    {0x3213, 0x0E},
+    {0x3214, 0x1B},
+    {0x3215, 0x03},
+    {0x3216, 0x21},
+    {0x3217, 0x04},
+    {0x3218, 0x07},
+    {0x3219, 0x00},
+    {0x321A, 0x29},
+    {0x321B, 0x07},
+    {0x321C, 0x00},
+    {0x321D, 0x04},
+    {0x321E, 0x29},
+    {0x321F, 0x04},
+    {0x3220, 0x07},
+    {0x3221, 0x00},
+    {0x3222, 0x0F},
+    {0x3223, 0x03},
+    {0x3224, 0x00},
+    {0x3225, 0x00},
+    {0x3226, 0x29},
+    {0x3227, 0x03},
+    {0x3228, 0x00},
+    {0x3229, 0x00},
+    {0x322A, 0x11},
+    {0x322B, 0x03},
+    {0x322C, 0x1B},
+    {0x322D, 0x00},
+    {0x322E, 0x07},
+    {0x322F, 0x0F},
+    {0x3230, 0x0E},
+    {0x3231, 0x61},
+    {0x3232, 0x53},
+    {0x3233, 0x53},
+    {0x3234, 0x46},
+    {0x3235, 0x49},
+    {0x3236, 0x49},
+    {0x3237, 0x47},
+    {0x3238, 0x5E},
+    {0x3239, 0x47},
+    {0x323A, 0x53},
+    {0x323B, 0x53},
+    {0x323C, 0x49},
+    {0x323D, 0x49},
+    {0x323E, 0x68},
+    {0x323F, 0x64},
+    {0x3240, 0x00},
+    {0x3241, 0x1A},
+    {0x3242, 0x1C},
+    {0x3243, 0x04},
+    {0x3244, 0x13},
+    {0x3245, 0x13},
+    {0x3246, 0x32},
+    {0x3247, 0x08},
+    {0x3248, 0x7D},
+    {0x3249, 0x20},
+    {0x324A, 0x0F},
+    {0x324B, 0x53},
+    {0x324C, 0x84},
+    {0x324D, 0x1C},
+    {0x324E, 0x28},
+    {0x324F, 0x07},
+    {0x3250, 0x04},
+    {0x3251, 0x00},
+    {0x3252, 0x0F},
+    {0x3253, 0x00},
+    {0x3254, 0x00},
+    {0x3255, 0x00},
+    {0x3256, 0x00},
+    {0x3257, 0x00},
+    {0x3258, 0x00},
+    {0x3300, 0x00},
+    {0x3301, 0x00},
+    {0x3302, 0x00},
+    {0x3303, 0x00},
+    {0x3304, 0x00},
+    {0x3305, 0x00},
+    {0x3306, 0x00},
+    {0x3307, 0x01},
+    {0x3308, 0x00},
+    {0x3309, 0x01},
+    {0x330A, 0x00},
+    {0x330B, 0x01},
+    {0x330C, 0x00},
+    {0x330D, 0x01},
+    {0x330E, 0x00},
+    {0x330F, 0x01},
+    {0x3310, 0x00},
+    {0x3311, 0x01},
+    {0x3312, 0x00},
+    {0x3313, 0x2C},
+    {0x3314, 0x01},
+    {0x3315, 0x01},
+    {0x3316, 0x00},
+    {0x3317, 0xE2},
+    {0x3318, 0x04},
+    {0x3319, 0xE2},
+    {0x331A, 0x04},
+    {0x331B, 0xE2},
+    {0x331C, 0x04},
+    {0x331D, 0xE2},
+    {0x331E, 0x04},
+    {0x331F, 0xE2},
+    {0x3320, 0x04},
+    {0x3321, 0xE2},
+    {0x3322, 0x04},
+    {0x3323, 0xEE},
+    {0x3324, 0x02},
+    {0x3325, 0xEE},
+    {0x3326, 0x02},
+    {0x3327, 0x01},
+    {0x3328, 0x00},
+    {0x3329, 0x01},
+    {0x332A, 0x00},
+    {0x332B, 0x01},
+    {0x332C, 0x00},
+    {0x332D, 0x01},
+    {0x332E, 0x00},
+    {0x332F, 0x77},
+    {0x3330, 0x01},
+    {0x3331, 0x01},
+    {0x3332, 0x00},
+    {0x3333, 0xE2},
+    {0x3334, 0x04},
+    {0x3335, 0xE2},
+    {0x3336, 0x04},
+    {0x3337, 0xE2},
+    {0x3338, 0x04},
+    {0x3339, 0xE2},
+    {0x333A, 0x04},
+    {0x333B, 0xE2},
+    {0x333C, 0x04},
+    {0x333D, 0xE2},
+    {0x333E, 0x04},
+    {0x333F, 0x01},
+    {0x3340, 0x00},
+    {0x3341, 0x01},
+    {0x3342, 0x00},
+    {0x3343, 0x01},
+    {0x3344, 0x00},
+    {0x3345, 0x00},
+    {0x3346, 0x00},
+    {0x3347, 0x00},
+    {0x3348, 0x00},
+    {0x3349, 0x00},
+    {0x334A, 0x00},
+    {0x334B, 0x00},
+    {0x334C, 0x00},
+    {0x334D, 0x10},
+    {0x334E, 0x32},
+    {0x334F, 0x54},
+    {0x3350, 0x86},
+    {0x3351, 0xA9},
+    {0x3352, 0xCB},
+    {0x3353, 0xED},
+    {0x3354, 0x7F},
+    {0x3355, 0x10},
+    {0x3356, 0x32},
+    {0x3357, 0x54},
+    {0x3358, 0x87},
+    {0x3359, 0xA9},
+    {0x335A, 0xCB},
+    {0x335B, 0xED},
+    {0x335C, 0x5F},
+    {0x335D, 0x00},
+    {0x335E, 0x00},
+    {0x335F, 0x00},
+    {0x3360, 0x00},
+    {0x3361, 0x01},
+    {0x3362, 0x00},
+    {0x3363, 0x76},
+    {0x3364, 0xE8},
+    {0x3365, 0x03},
+    {0x3366, 0xE8},
+    {0x3367, 0x03},
+    {0x3368, 0x88},
+    {0x3369, 0x13},
+    {0x336A, 0x88},
+    {0x336B, 0x13},
+    {0x336C, 0x00},
+    {0x3400, 0x00},
+    {0x3401, 0x12},
+    {0x3402, 0x00},
+    {0x3403, 0x01},
+    {0x3404, 0x64},
+    {0x3405, 0x02},
+    {0x3500, 0x10},
+    // {0x3500, 0x18},
+    {0x3501, 0x86},
+    {0x3502, 0x00},
+    {0x3503, 0x00},
+    {0x3504, 0x00},
+    {0x3505, 0x00},
+    {0x3506, 0x00},
+    {0x3507, 0x00},
+    {0x3508, 0x00},
+    {0x3509, 0x00},
+    {0x350A, 0x00},
+    {0x350B, 0x00},
+    {0x350C, 0x00},
+    {0x350D, 0x00},
+    {0x350E, 0x00},
+    {0x350F, 0x00},
+    {0x3510, 0x00},
+    {0x3511, 0x00},
+    {0x3512, 0x10},
+    {0x3513, 0x00},
+    {0x3514, 0x00},
+    {0x3515, 0x00},
+    {0x3516, 0x00},
+    {0x3517, 0x00},
+    {0x3518, 0x00},
+    {0x3519, 0x00},
+    {0x351A, 0x00},
+    {0x351B, 0x00},
+    {0x351C, 0x00},
+    {0x351D, 0x00},
+    {0x351E, 0x00},
+    {0x351F, 0x00},
+    {0x3520, 0x00},
+    {0x3521, 0x00},
+    {0x3522, 0x10},
+    {0x3523, 0x52},
+    {0x3524, 0x04},
+    {0x3525, 0x00},
+    {0x3526, 0x00},
+    {0x3527, 0x00},
+    {0x3528, 0x00},
+    {0x3529, 0x00},
+    {0x352A, 0x00},
+    {0x3700, 0xE0},
+    {0x3701, 0x08},
+    {0x3702, 0x6E},
+    {0x3703, 0x0D},
+    {0x3704, 0x0},
+    {0x3705, 0x80},
+    {0x3706, 0x00},
+    {0x3707, 0x64},
+    {0x3708, 0x00},
+    {0x3709, 0xF9},
+    {0x370A, 0x32},
+    {0x370B, 0x00},
+    {0x370C, 0x02},
+    {0x370D, 0x24},
+    {0x370E, 0x3F},
+    {0x370F, 0x0F},
+    {0x3710, 0x64},
+    {0x3711, 0x00},
+    {0x3712, 0x00},
+    {0x3713, 0x3A},
+    {0x3800, 0xE0},
+    {0x3801, 0x08},
+    {0x3802, 0x6E},
+    {0x3803, 0x0D},
+    {0x3804, 0x0},
+    {0x3805, 0x80},
+    {0x3806, 0x00},
+    {0x3807, 0x64},
+    {0x3808, 0x00},
+    {0x3809, 0xF9},
+    {0x380A, 0x32},
+    {0x380B, 0x00},
+    {0x380C, 0x02},
+    {0x380D, 0x24},
+    {0x380E, 0x3F},
+    {0x380F, 0x0F},
+    {0x3810, 0x64},
+    {0x3811, 0x00},
+    {0x3812, 0x00},
+    {0x3813, 0x3A},
+    {SENSOR_TABLE_END, 0x00}};
+
+static struct reg_8 gmax3412_start_stream[] = {
+    {0x2E00, 0x03},
+    {SENSOR_TABLE_WAIT_MS, 5},
+    {SENSOR_TABLE_END, 0x00}
+};
+ 
+static struct reg_8 gmax3412_stop_stream[] = {
+    {0x2E00, 0x01},
+    {SENSOR_TABLE_WAIT_MS, 5},
+    {SENSOR_TABLE_END, 0x00}
+};
+
+static SENSOR_REG_STRUCT *mode_table[] = {
+    [GMAX3412_MODE_4096x3072_30FPS] = gmax3412_mode_12bit_2592x1944_30fps,
+    [GMAX3412_START_STREAM]  = gmax3412_start_stream,
+    [GMAX3412_STOP_STREAM]  = gmax3412_stop_stream,
+};
+
+static const int gmax3412_246fps[] = {
+    60,
+};
+
+static const struct camera_common_frmfmt gmax3412_frmfmt[] = {
+    {{GMAX3412_WIDTH, GMAX3412_HEIGHT}, gmax3412_246fps, 1, 0, GMAX3412_MODE_4096x3072_30FPS},
+};
+
+static int gmax3412_start_streaming(struct tegracam_device *tc_dev)
+{
+    printk("gmax3412_start_streaming.............\r\n");
+    return 0;
+}
+
+static int gmax3412_stop_streaming(struct tegracam_device *tc_dev)
+{
+    printk("gmax3412_stop_streaming.............\r\n");
+    return 0;
+}
+
+static struct camera_common_sensor_ops gmax3412_common_ops = {
+	.numfrmfmts = ARRAY_SIZE(gmax3412_frmfmt),
+	.frmfmt_table = gmax3412_frmfmt,		
+	.power_on = sensor_power_on,
+	.power_off = sensor_power_off,		
+	.write_reg = imx_write_reg,		
+	.read_reg = imx_read_reg,
+	.parse_dt = sensor_parse_dt,
+	.power_get = sensor_power_get,	
+	.power_put = sensor_power_put,		
+	.set_mode = sensor_set_mode,
+    .start_streaming = gmax3412_start_streaming,
+	.stop_streaming = gmax3412_stop_streaming,		
+};
+
+static const struct reg_cfg_cmd g_clk_config_table[][14] = {
+    {
+        {0x81, 0x03F0, 0x02, 0x43},
+        {0x80, 0x03F4, 0x33, 0x00},
+        {0x81, 0x03F5, 0x03, 0x0F},
+        {0x81, 0x03F0, 0x00, 0x03},
+        {0x81, 0x1A03, 0x10, 0x90},
+        {0x81, 0x1A07, 0x04, 0xFC},
+        {0x80, 0x1A08, 0x33, 0x00},
+        {0x81, 0x1A09, 0x00, 0xFF},
+        {0x81, 0x1A0A, 0x61, 0x7F},
+        {0x81, 0x1A0B, 0xA0, 0xE0},
+        {0x81, 0x03F0, 0x01, 0x01},
+        {0x81, 0x0003, 0x03, 0x07},
+        {0x81, 0x0006, 0x20, 0x20},
+        {0x81, 0x0570, 0x00, 0x30},
+    },
+    {
+        {0x81, 0x03F0, 0x00, 0x43},
+        {0x81, 0x03F5, 0x00, 0x0F},
+        {0x81, 0x0570, 0x00, 0x30},
+        {0x80, 0x02CA, 0x90, 0x00},
+        {0x80, 0x02CA, 0x80, 0x00},
+    }
+};
+/**
+ * @brief 配置MAX96717管脚输出24MHz时钟信号
+ * 
+ * @param priv 
+ * @return int 
+ */
+static int gmax3412_power_on(struct nv_sony_sensor *priv)
+{
+    int ret = 0;
+    struct i2c_client *client = priv->i2c_client;
+    u8 addr = MAX96717_GMAX3412_ALTER_ADDR_BASE + priv->des_link;
+    u8 i = 0;
+    //配置MFP3输出
+    ret = gmsl_iic_write(client, addr, 0x02c7, 0x90);
+    msleep_range(100);
+    for (i = 0; i < 14; i++)
+    {
+        const struct reg_cfg_cmd *item = &g_clk_config_table[0][i];
+        if (item->op == 0x80)
+        {
+            ret = gmsl_iic_write(client, addr, item->reg, item->data);
+        }
+        else if (item->op == 0x81)
+        {
+            ret = device_reg_update_bits(client, addr, \
+                                item->reg, item->mask, item->data);
+        }
+        if (ret < 0) return ret;
+    }
+    //配置MFP0输出
+    ret = gmsl_iic_write(client, addr, 0x02BE, 0x90);
+    msleep_range(100);
+    return ret;
+}
+
+static int gmax3412_power_off(struct nv_sony_sensor *priv)
+{
+    int ret = 0;
+    struct i2c_client *client = priv->i2c_client;
+    u8 addr = MAX96717_GMAX3412_ALTER_ADDR_BASE + priv->des_link;
+    u8 i = 0;
+    for (i = 0; i < 5; i++)
+    {
+        const struct reg_cfg_cmd *item = &g_clk_config_table[1][i];
+        if (item->op == 0x80)
+        {
+            ret = gmsl_iic_write(client, addr, item->reg, item->data);
+        }
+        else if (item->op == 0x81)
+        {
+            ret = device_reg_update_bits(client, addr, \
+                                item->reg, item->mask, item->data);
+        }
+        if (ret < 0) return ret;
+    }
+    msleep_range(1);
+    //关闭SYS_RST_N
+    ret = gmsl_iic_write(client, addr, 0x02BE, 0x80);
+    msleep_range(10);
+    ret = gmsl_iic_write(client, addr, 0x02c7, 0x80);
+    return ret;
+}
+
+static int gmax3412_board_setup(struct nv_sony_sensor *priv, MODE_TYPE mode)
+{
+    int err = 0;
+	u8 buf[3] = {0};
+	u8 val = 0;
+    u8 ser_alias_addr;
+    struct i2c_client *client = priv->i2c_client;
+    err = camera_common_mclk_enable(priv->s_data);
+	if (err) {
+		return err;
+	}
+    ser_alias_addr = MAX96717_GMAX3412_ALTER_ADDR_BASE+priv->des_link;
+    z_max96724_lock_link(priv->dser_dev);
+    vc_info(&client->dev, "priv->des_link:%d \r\n", priv->des_link);
+    err = z_max96724_check_link_status(priv->dser_dev, priv->des_link);
+    if (err)
+    {
+        z_max96724_unlock_link(priv->dser_dev);
+        vc_err(&client->dev, " link_%c is occupied err:%d\n", 'A' + priv->des_link, err);
+        err = -EINVAL;
+    }
+    z_max96724_monopolize_link(priv->dser_dev, priv->des_link);
+    mdelay(50);
+    gmsl_iic_write(client, MAX96717_GMAX3412_ALTER_ADDR_BASE, 0x0000, (ser_alias_addr) << 1);
+    mdelay(50);
+    //读取max6717的id编号
+    err = gmsl_iic_read(client, ser_alias_addr, MAX96717_DEV_ID, &val);
+    vc_info(&client->dev, "ret:%d MAX96717_DEV_ID:0x%x\n", err, val);
+    if (err || (val != 0x91 && val != 0xbf))
+    {
+        vc_err(&client->dev, "access 's max969717 failed\n");
+        err = -EINVAL;
+        goto ERR_EXIT;
+    }
+    err = gmsl_iic_read(client, ser_alias_addr, 0x0E, &val);
+    vc_info(&client->dev, "ret:%d DEV_REV:0x%x\n", err, val);
+    err = gmax3412_power_on(priv);
+    if(err)
+    {
+        vc_err(&client->dev, "gmax3412_power_on failed!\n");
+        err = -EINVAL;
+        goto ERR_EXIT;
+    }
+    mdelay(20);
+    //读取sensor的id编号
+    err = gmsl_iic_read(client, priv->def_addr, 0x2e01, &buf[0]);
+    err = gmsl_iic_read(client, priv->def_addr, 0x2e02, &buf[1]);
+    vc_info(&client->dev, "err:%d  val:%d %d\r\n", err, buf[0], buf[1]);
+    vc_info(&client->dev, "err:%d  val:%d \r\n", err, buf[0]);
+    if(err != 0 || 0 != buf[0])
+    {
+        vc_err(&client->dev, "read sensor reg hold %d failed\n", buf[0]);
+        goto ERR_EXIT;
+    }
+    // vc_info(&client->dev, "ser_alias_addr:0x%x act_addr:0x%x def_addr:0x%x \r\n", ser_alias_addr, priv->act_addr, priv->def_addr);
+    gmsl_iic_write(client, ser_alias_addr, 0x0044, priv->act_addr<<1); //dst addr,配置透传i2c的地址信息
+	gmsl_iic_write(client, ser_alias_addr, 0x0045, priv->def_addr<<1); //src addr, original sensor addr
+    gmsl_iic_write(client, ser_alias_addr ,0x0383, 0x00); //Disable tunneling mode
+
+    vc_info(&client->dev, "num_ser_csi_lanes:%d \r\n", priv->g_ctx.num_ser_csi_lanes);
+    gmsl_iic_write(client, ser_alias_addr, 0x0331, (((priv->g_ctx.num_ser_csi_lanes-1)<<4))); //配置底层的mipi的lane的数量
+	gmsl_iic_write(client, ser_alias_addr, 0x0332, 0xE0);//
+	gmsl_iic_write(client, ser_alias_addr, 0x0333, 0x04);//
+	gmsl_iic_write(client, ser_alias_addr, 0x0334, 0x00);//
+	gmsl_iic_write(client, ser_alias_addr, 0x0335, 0x00);//
+
+    gmsl_iic_write(client, ser_alias_addr, 0x0311, 0x40);//Start video pipe Z from CSI port
+    gmsl_iic_write(client, ser_alias_addr, 0x0318, 0x40 | GMSL_CSI_DT_RAW_12); //选择使能RAW10的数据类型(0x2B)通过video pipeline
+
+    gmsl_iic_write(client, ser_alias_addr, 0x0313, 0x40); //Send 12-bit pixels as 24-bit
+    gmsl_iic_write(client, ser_alias_addr, 0x031E, 0x20 | 0x18); //Software override of BPP on video pipeline Z
+
+    gmsl_iic_write(client, ser_alias_addr, 0x005B, 0x00); //Stream ID for packets from this channel
+
+    z_max96724_enable_link(priv->dser_dev, priv->des_link);
+    z_max96724_restore_link(priv->dser_dev);
+    z_max96724_unlock_link(priv->dser_dev);
+    return err;
+
+ERR_EXIT:
+    gmax3412_power_off(priv);
+    z_max96724_restore_link(priv->dser_dev);
+    z_max96724_unlock_link(priv->dser_dev);
+    // vc_info(&client->dev, "return err:%d \r\n", err);
+    return err;
+}
+static void gmax3412_init_param(struct nv_sony_sensor *priv, int modeType)
+{
+    // struct i2c_client *client = priv->i2c_client;
+    int ret = 0;
+    struct camera_common_data *s_data = priv->s_data;
+	ret = sensor_write_table(s_data, mode_table[0]);
+    msleep_range(10);
+    imx_write_reg(s_data, 0x2E00, 0x1);
+    msleep_range(10);
+	imx_write_reg(s_data, 0x3301, 0x01);
+	msleep_range(90);
+	imx_write_reg(s_data, 0x3005, 0x01);
+    msleep_range(2);
+	imx_write_reg(s_data, 0x3024, 0x14);
+	msleep_range(2);
+	imx_write_reg(s_data, 0x3023, 0xF8);
+	msleep_range(2);
+	imx_write_reg(s_data, 0x3023, 0xF9);
+	msleep_range(2);
+	imx_write_reg(s_data, 0x3023, 0xFF);
+	msleep_range(2);
+	imx_write_reg(s_data, 0x3024, 0x34);
+	msleep_range(2);
+	imx_write_reg(s_data, 0x3023, 0xFB);
+	msleep_range(2);
+	// imx_write_reg(s_data, 0x2E00, 0x3);
+    msleep_range(10);
+
+}
+void gmax3412_read_id_type(struct nv_sony_sensor *priv)
+{
+
+}
+
+int gmax3412_ioctl_set(struct nv_sony_sensor *priv, unsigned int cmd, void *arg)
+{
+    union sensor_ioctl_data data;
+	struct device *dev = priv->s_data->dev;
+    int ret = 0;
+	const char *ver;
+	memset(&data, 0, sizeof(data));
+    switch (cmd)
+	{
+		case V4L2_CID_GET_VERSION:
+			vc_info(dev, "get ver:%s \r\n", GMAX3412_FULL_VERSION_EX);
+			ver = GMAX3412_FULL_VERSION_EX;
+			data.ver.len = strnlen(ver, SENSOR_VER_MAX_LEN - 1);
+			memcpy(data.ver.ver, ver, data.ver.len);
+			data.ver.ver[data.ver.len] = '\0';
+			if (copy_to_user(arg, &data.ver, sizeof(data.ver))) {
+            	ret = -EFAULT;
+        	}
+			break;
+        case CAM_SET_ROI_FORMAT:
+            {
+                ret = copy_from_user(&data.roi, (struct custon_params __user *)arg, sizeof(data.roi));
+				vc_info(dev, "isEnable:%d roi_params:%d %d %d %d \n",data.roi.isEnable, data.roi.start_x, data.roi.start_y, data.roi.width, data.roi.height);
+            }
+            break;
+        case CAM_SET_CUSTOM_TEST:
+            {
+                z_max96724_print_reg_status(priv->dser_dev);
+                vc_info(dev, "==================max96717================\r\n");
+                gmsl_status_reg_print(priv->i2c_client, MAX96717_GMAX3412_ALTER_ADDR_BASE + priv->des_link, MAX96717);
+            }
+            break;
+    	default:
+            break;
+    }
+    return ret;
+}
+int gmax3412_stream_set(struct nv_sony_sensor *priv, int enable)
+{
+    int err = 0;
+    struct i2c_client *client = priv->i2c_client;
+    struct device *dev = &priv->i2c_client->dev;
+    struct camera_common_data *s_data = priv->s_data;
+    u8 ser_alias_addr = MAX96717_GMAX3412_ALTER_ADDR_BASE+priv->des_link;
+    vc_info(dev, "stream_set enable:%d \r\n", enable);
+    if (1 == enable)
+    {
+        mutex_lock(&serdes_lock__);
+        gmsl_iic_write(client, ser_alias_addr, 0x0308, 0x64); // enable CSI-B
+        gmsl_iic_write(client, ser_alias_addr, 0x0112, 0x08);//Video received PCLK detected
+        // Pipe Configuration
+        err = z_max96724_start_streaming(priv->dser_dev, &priv->g_ctx);
+        if (err)
+        {
+            mutex_unlock(&serdes_lock__);
+            return err;
+        }
+        gmsl_iic_write(priv->i2c_client, ser_alias_addr, 0x0002, 0x43); // enable z
+        err = sensor_write_table(s_data, mode_table[GMAX3412_START_STREAM]);
+        if (err)
+        {
+            mutex_unlock(&serdes_lock__);
+            return err;
+        }
+        mutex_unlock(&serdes_lock__);
+    }
+    else
+    {
+        z_max96724_stop_streaming(priv->dser_dev, &priv->g_ctx);
+        sensor_write_table(s_data, mode_table[GMAX3412_STOP_STREAM]);
+    }
+    return err;
+}
+static int gmax3412_set_group_hold(struct tegracam_device *tc_dev, bool val)
+{
+    return 0;
+}
+const struct nv_sensor_model_info gmax3412_i2c_info = {
+	.usr_id = GMAX3412,
+	.i2c_address = 0x10,
+	.name = "gmax3412",
+	.input_freq = 40000,
+	.pixel_width = GMAX3412_WIDTH,
+	.pixel_height = GMAX3412_HEIGHT,
+	.pixel_bit = SENSOR_12_BIT,
+	.sensorMode = NORMAL_MODE,
+	.map_config = &gmax3412_regmap_config,
+	.cam_com_ops = &gmax3412_common_ops,
+	.dtb_init = &gmsl_dtb_file_init,
+	.board_init = &gmax3412_board_setup,
+#if 1
+	.sensor_init_param = &gmax3412_init_param,
+#else
+    .sensor_init_param = NULL,
+#endif
+	.sensor_usr_set = &gmax3412_read_id_type,
+	.sensor_ioctl_set = &gmax3412_ioctl_set,
+	.sensor_stream_set = &gmax3412_stream_set,
+	.sensor_fmt_set = &sensor_set_fmt,
+	.sensor_fmt_get = &sensor_get_fmt,
+	.sensor_set_selection = sensor_set_selection,
+	.sensor_get_selection = sensor_get_selection,
+    .sensor_set_group_hold = gmax3412_set_group_hold,
+    .board_off_power = &gmax3412_power_off,
+};

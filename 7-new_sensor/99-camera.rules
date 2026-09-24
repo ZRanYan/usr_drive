@@ -1,0 +1,6 @@
+SUBSYSTEM=="video4linux", KERNEL=="video*", ENV{ID_V4L_PRODUCT}=="vi-output, nv_sensor 7-0010", SYMLINK+="camera-0"
+SUBSYSTEM=="video4linux", DEVPATH=="*/i2c-7/7-0010/video4linux/v4l-subdev*", SYMLINK+="cam-sudev2"
+
+SUBSYSTEM=="video4linux", KERNEL=="video*", ENV{ID_V4L_PRODUCT}=="vi-output, nv_sensor 0-0010", SYMLINK+="camera-1"
+SUBSYSTEM=="video4linux", DEVPATH=="*/i2c-0/0-0010/video4linux/v4l-subdev*", SYMLINK+="cam-sudev3"
+

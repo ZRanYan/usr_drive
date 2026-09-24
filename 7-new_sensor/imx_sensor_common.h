@@ -10,7 +10,7 @@ int imx_read_reg(struct camera_common_data *s_data,
 int imx_write_reg(struct camera_common_data *s_data,
 				u16 addr, u8 val);
                 
-void sony_sensor_read_id_type(struct nv_sony_senor *priv);
+void sony_sensor_read_id_type(struct nv_sony_sensor *priv);
 /**
  * @brief 对齐soc底层出来的pwm波形,pwm最高时408MHz进行256分频最小周期值是628uS
  * 
@@ -20,7 +20,7 @@ void sony_sensor_read_id_type(struct nv_sony_senor *priv);
  */
 __u32 orin_calculate_pwm_period(__u32 *hmax, __u32 input_freq);
 
-int sony_sensor_imx56x_get_temp(struct nv_sony_senor *priv);
+int sony_sensor_imx56x_get_temp(struct nv_sony_sensor *priv);
 
 int sony_sensor_reg_debug_set(struct camera_common_data *s_data, SENSOR_DEBUG_REG_PARAMS *data);
 
@@ -34,9 +34,11 @@ int sensor_power_off(struct camera_common_data *s_data);
 struct camera_common_pdata *sensor_parse_dt(struct tegracam_device *tc_dev);
 int sensor_write_table(struct camera_common_data *s_data,
 				const SENSOR_REG_STRUCT table[]);
-int sensor_set_fmt(struct nv_sony_senor *priv, struct v4l2_subdev *sd, struct v4l2_subdev_format *format);
-int sensor_get_fmt(struct nv_sony_senor *priv, struct v4l2_subdev *sd, struct v4l2_subdev_format *format);
-int sensor_set_selection(struct nv_sony_senor *priv, struct v4l2_subdev_state *state, struct v4l2_subdev_selection *sel);
-int sensor_get_selection(struct nv_sony_senor *priv, struct v4l2_subdev_state *sd_state, struct v4l2_subdev_selection *sel);
+int sensor_set_fmt(struct nv_sony_sensor *priv, struct v4l2_subdev *sd, struct v4l2_subdev_format *format);
+int sensor_get_fmt(struct nv_sony_sensor *priv, struct v4l2_subdev *sd, struct v4l2_subdev_format *format);
+int sensor_set_selection(struct nv_sony_sensor *priv, struct v4l2_subdev_state *state, struct v4l2_subdev_selection *sel);
+int sensor_get_selection(struct nv_sony_sensor *priv, struct v4l2_subdev_state *sd_state, struct v4l2_subdev_selection *sel);
+
+void sensor_reg_info_print(struct device *dev, int set, struct reg_8 *reg);
 
 #endif
